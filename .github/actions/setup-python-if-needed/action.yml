@@ -1,0 +1,69 @@
+---
+name: Setup Python (if needed)
+description: Conditionally ensure Python >= min_version; installs setup_version via actions/setup-python if too old/missing.
+inputs:
+  min_version:
+    description: Minimum acceptable Python version (major.minor)
+    required: false
+    default: "3.10"
+  setup_version:
+    description: Python version to install via actions/setup-python when needed
+    required: false
+    default: "3.11"
+outputs:
+  python_bin:
+    description: Resolved Python binary to use in later steps
+    value: ${{ steps.detect.outputs.python_bin }}
+  python_version:
+    description: Final Python version after this action completes
+    value: ${{ steps.final.outputs.python_version }}
+  did_setup:
+    description: Whether actions/setup-python ran (true/false)
+    value: ${{ steps.detect.outputs.needs_python_setup }}
+runs:
+  using: "composite"
+  steps:
+    - name: Detect existing Python
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+        need=true
+        pybin=""
+        if command -v python3 >/dev/null 2>&1; then pybin=python3
+        elif command -v python >/dev/null 2>&1; then pybin=python
+        fi
+
+        if [ -n "${pybin}" ]; then
+          ver="$($pybin -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+          req="${{ inputs.min_version }}"
+          v_major="${ver%%.*}"; v_minor="${ver#*.}"
+          r_major="${req%%.*}"; r_minor="${req#*.}"
+          if [ "$v_major" -gt "$r_major" ] || { [ "$v_major" -eq "$r_major" ] && [ "$v_minor" -ge "$r_minor" ]; }; then
+            need=false
+          fi
+        fi
+
+        if $need; then
+          echo "needs_python_setup=true" >> "$GITHUB_OUTPUT"
+          echo "python_bin=python" >> "$GITHUB_OUTPUT" # will exist after setup-python
+        else
+          echo "needs_python_setup=false" >> "$GITHUB_OUTPUT"
+          echo "python_bin=$pybin" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Python via actions/setup-python (only if needed)
+      if: steps.detect.outputs.needs_python_setup == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.setup_version }}
+
+    - name: Finalize / report Python version
+      id: final
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Using python bin: $(command -v ${{ steps.detect.outputs.python_bin }})"
+        "${{ steps.detect.outputs.python_bin }}" --version
+        pv="$("${{ steps.detect.outputs.python_bin }}" -c 'import platform; print(platform.python_version())')"
+        echo "python_version=$pv" >> "$GITHUB_OUTPUT"

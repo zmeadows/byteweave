@@ -1,0 +1,81 @@
+---
+name: "Setup Ninja (download with fallback)"
+description: "Download a prebuilt Ninja and add to PATH; fallback to package manager on failure."
+inputs:
+  version:
+    description: "Ninja version (e.g., 1.13.1)"
+    required: false
+    default: "1.13.1"
+  fallback:
+    description: "Fallback to package manager if download fails"
+    required: false
+    default: "true"
+outputs:
+  bin-dir:
+    description: "Directory added to PATH containing ninja"
+    value: ${{ steps.out.outputs.bin_dir }}
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare tool dir
+      id: out
+      shell: bash
+      run: |
+        TOOLDIR="${GITHUB_WORKSPACE}/.tools/bin"
+        mkdir -p "$TOOLDIR"
+        echo "bin_dir=$TOOLDIR" >> "$GITHUB_OUTPUT"
+
+    - name: Download Ninja (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        TOOLDIR="${GITHUB_WORKSPACE}/.tools/bin"
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          URL="https://github.com/ninja-build/ninja/releases/download/v${{ inputs.version }}/ninja-linux.zip"
+        else
+          URL="https://github.com/ninja-build/ninja/releases/download/v${{ inputs.version }}/ninja-mac.zip"
+        fi
+        echo "Downloading Ninja from $URL"
+        if curl -fsSL "$URL" -o /tmp/ninja.zip; then
+          command -v unzip >/dev/null 2>&1 || { echo "unzip not found; attempting to install (Linux only)"; sudo apt-get update -y && sudo apt-get install -y unzip || true; }
+          unzip -qo /tmp/ninja.zip -d "$TOOLDIR"
+          chmod +x "$TOOLDIR/ninja"
+          echo "$TOOLDIR" >> "$GITHUB_PATH"
+        else
+          echo "Ninja download failed."
+          if [ "${{ inputs.fallback }}" = "true" ]; then
+            echo "Falling back to package manager..."
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              sudo apt-get update -y && sudo apt-get install -y ninja-build
+            else
+              brew ls --versions ninja >/dev/null || brew install ninja
+            fi
+          else
+            exit 1
+          fi
+        fi
+        ninja --version
+
+    - name: Download Ninja (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ToolBin = Join-Path $env:GITHUB_WORKSPACE ".tools\bin"
+        New-Item -ItemType Directory -Force -Path $ToolBin | Out-Null
+        $Url = "https://github.com/ninja-build/ninja/releases/download/v${{ inputs.version }}/ninja-win.zip"
+        Write-Host "Downloading Ninja from $Url"
+        try {
+          Invoke-WebRequest -Uri $Url -OutFile "$env:RUNNER_TEMP\ninja.zip" -UseBasicParsing
+          Expand-Archive -Path "$env:RUNNER_TEMP\ninja.zip" -DestinationPath $ToolBin -Force
+          echo $ToolBin >> $env:GITHUB_PATH
+        } catch {
+          Write-Warning "Ninja download failed."
+          if ("${{ inputs.fallback }}".ToLower() -eq "true") {
+            Write-Host "Falling back to Chocolatey..."
+            choco install -y ninja
+          } else {
+            throw
+          }
+        }
+        ninja --version

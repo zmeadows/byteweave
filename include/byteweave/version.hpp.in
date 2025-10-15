@@ -1,0 +1,17 @@
+// Generated via CMake configure_file or inlined by the amalgamation script
+#pragma once
+
+// clang-format off
+#ifndef BYTEWEAVE_VERSION_MAJOR
+#  define BYTEWEAVE_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#endif
+#ifndef BYTEWEAVE_VERSION_MINOR
+#  define BYTEWEAVE_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#endif
+#ifndef BYTEWEAVE_VERSION_PATCH
+#  define BYTEWEAVE_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#endif
+#ifndef BYTEWEAVE_VERSION_STRING
+#  define BYTEWEAVE_VERSION_STRING "@PROJECT_VERSION@"
+#endif
+// clang-format on

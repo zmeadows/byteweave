@@ -1,0 +1,149 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "ci-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+      }
+    },
+    {
+      "name": "ci-lib-static",
+      "displayName": "CI Library (static, Release)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-lib-static",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SHARED": "OFF",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "OFF",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "BYTEWEAVE_WARNINGS": "ON",
+        "BYTEWEAVE_WERROR": "ON"
+      }
+    },
+    {
+      "name": "ci-lib-shared",
+      "displayName": "CI Library (shared, Release)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-lib-shared",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SHARED": "ON",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "OFF",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "BYTEWEAVE_WARNINGS": "ON",
+        "BYTEWEAVE_WERROR": "ON"
+      }
+    },
+    {
+      "name": "ci-header",
+      "displayName": "CI Single-header (Release)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-header",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BYTEWEAVE_BUILD_LIBRARY": "OFF",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "ON",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "BYTEWEAVE_WARNINGS": "ON",
+        "BYTEWEAVE_WERROR": "ON"
+      }
+    },
+    {
+      "name": "ci-sanitizers",
+      "displayName": "CI Sanitizers (ASan+UBSan, RelWithDebInfo)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-sanitizers",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SHARED": "OFF",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "OFF",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "BYTEWEAVE_WARNINGS": "ON",
+        "BYTEWEAVE_WERROR": "ON",
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "ci-warnings-clang",
+      "displayName": "CI Warnings (Clang, static, Release)",
+      "inherits": ["ci-lib-static"],
+      "binaryDir": "build/ci-warnings-clang",
+      "cacheVariables": {
+        "BYTEWEAVE_WARNINGS_STRICT": "ON"
+      }
+    },
+    {
+      "name": "ci-warnings-gcc",
+      "displayName": "CI Warnings (GCC, static, Release)",
+      "inherits": ["ci-lib-static"],
+      "binaryDir": "build/ci-warnings-gcc",
+      "cacheVariables": {
+        "BYTEWEAVE_WARNINGS_STRICT": "ON"
+      }
+    },
+    {
+      "name": "ci-warnings-msvc",
+      "displayName": "CI Warnings (MSVC, static, Release)",
+      "inherits": ["ci-lib-static"],
+      "binaryDir": "build/ci-warnings-msvc",
+      "cacheVariables": {
+        "BYTEWEAVE_WARNINGS_STRICT": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ci-lib-static",
+      "configurePreset": "ci-lib-static",
+      "displayName": "CI Build library (static)",
+      "targets": ["all"]
+    },
+    {
+      "name": "ci-lib-shared",
+      "configurePreset": "ci-lib-shared",
+      "displayName": "CI Build library (shared)",
+      "targets": ["all"]
+    },
+    {
+      "name": "ci-header",
+      "configurePreset": "ci-header",
+      "displayName": "CI Build single-header + example_single",
+      "targets": ["single_header", "example_single"]
+    },
+    {
+      "name": "ci-sanitizers",
+      "configurePreset": "ci-sanitizers",
+      "displayName": "CI Build with ASan+UBSan (example_lib)",
+      "targets": ["example_lib"]
+    },
+    {
+      "name": "ci-warnings-clang",
+      "configurePreset": "ci-warnings-clang",
+      "displayName": "CI Build warnings (clang)",
+      "targets": ["all"]
+    },
+    {
+      "name": "ci-warnings-gcc",
+      "configurePreset": "ci-warnings-gcc",
+      "displayName": "CI Build warnings (gcc)",
+      "targets": ["all"]
+    },
+    {
+      "name": "ci-warnings-msvc",
+      "configurePreset": "ci-warnings-msvc",
+      "displayName": "CI Build warnings (msvc)",
+      "targets": ["all"]
+    }
+  ]
+}

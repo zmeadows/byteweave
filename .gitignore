@@ -1,0 +1,21 @@
+# Build outputs
+/build/
+/dist/
+CMakeFiles/
+CMakeCache.txt
+*.dir/
+*.sln
+*.vcxproj*
+*.user
+compile_commands.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+
+.cache/
+CMakeUserPresets.json

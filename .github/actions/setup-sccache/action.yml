@@ -1,0 +1,118 @@
+---
+name: "Setup sccache (download with fallback)"
+description: "Download a prebuilt sccache, add to PATH, and start the server; fallback to package manager on failure."
+inputs:
+  version:
+    description: "sccache version (e.g., 0.7.5)"
+    required: false
+    default: "0.7.5"
+  fallback:
+    description: "Fallback to package manager if download fails"
+    required: false
+    default: "true"
+outputs:
+  bin-dir:
+    description: "Directory added to PATH containing sccache"
+    value: ${{ steps.out.outputs.bin_dir }}
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare tool dir
+      id: out
+      shell: bash
+      run: |
+        TOOLDIR="${GITHUB_WORKSPACE}/.tools/bin"
+        mkdir -p "$TOOLDIR"
+        echo "bin_dir=$TOOLDIR" >> "$GITHUB_OUTPUT"
+
+    - name: Download sccache (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        TOOLDIR="${GITHUB_WORKSPACE}/.tools/bin"
+        ARCH="$(uname -m)"
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          case "$ARCH" in
+            x86_64) PKG="sccache-v${{ inputs.version }}-x86_64-unknown-linux-musl.tar.gz" ;;
+            aarch64|arm64) PKG="sccache-v${{ inputs.version }}-aarch64-unknown-linux-musl.tar.gz" ;;
+            *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+          esac
+        else # macOS
+          case "$ARCH" in
+            x86_64) PKG="sccache-v${{ inputs.version }}-x86_64-apple-darwin.tar.gz" ;;
+            arm64|aarch64) PKG="sccache-v${{ inputs.version }}-aarch64-apple-darwin.tar.gz" ;;
+            *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+          esac
+        fi
+        URL="https://github.com/mozilla/sccache/releases/download/v${{ inputs.version }}/${PKG}"
+        echo "Downloading sccache from $URL"
+        if curl -fsSL "$URL" -o /tmp/sccache.tgz; then
+          EXTRACT_DIR="$(mktemp -d)"
+          tar -xzf /tmp/sccache.tgz -C "$EXTRACT_DIR"
+          SCC_BIN="$(find "$EXTRACT_DIR" -type f -name sccache | head -n 1 || true)"
+          if [ -z "$SCC_BIN" ]; then
+            echo "sccache binary not found in archive layout"; exit 1
+          fi
+          mv "$SCC_BIN" "$TOOLDIR/sccache"
+          chmod +x "$TOOLDIR/sccache"
+          echo "$TOOLDIR" >> "$GITHUB_PATH"
+        else
+          echo "sccache download failed."
+          if [ "${{ inputs.fallback }}" = "true" ]; then
+            echo "Falling back to package manager..."
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              sudo apt-get update -y && sudo apt-get install -y sccache
+            else
+              brew ls --versions sccache >/dev/null || brew install sccache
+            fi
+          else
+            exit 1
+          fi
+        fi
+        sccache --version
+
+    - name: Download sccache (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ToolBin = Join-Path $env:GITHUB_WORKSPACE ".tools\bin"
+        New-Item -ItemType Directory -Force -Path $ToolBin | Out-Null
+        $Pkg = "sccache-v${{ inputs.version }}-x86_64-pc-windows-msvc.zip"
+        $Url = "https://github.com/mozilla/sccache/releases/download/v${{ inputs.version }}/$Pkg"
+        Write-Host "Downloading sccache from $Url"
+        try {
+          Invoke-WebRequest -Uri $Url -OutFile "$env:RUNNER_TEMP\sccache.zip" -UseBasicParsing
+          Expand-Archive -Path "$env:RUNNER_TEMP\sccache.zip" -DestinationPath "$env:RUNNER_TEMP\sccache" -Force
+          $Found = Get-ChildItem -Path "$env:RUNNER_TEMP\sccache" -Recurse -Filter sccache.exe | Select-Object -First 1
+          if (-not $Found) { throw "sccache.exe not found in archive" }
+          Copy-Item $Found.FullName (Join-Path $ToolBin "sccache.exe") -Force
+          echo $ToolBin >> $env:GITHUB_PATH
+        } catch {
+          Write-Warning "sccache download failed."
+          if ("${{ inputs.fallback }}".ToLower() -eq "true") {
+            Write-Host "Falling back to Chocolatey..."
+            choco install -y sccache
+          } else {
+            throw
+          }
+        }
+        sccache --version
+
+    - name: Start sccache server (POSIX)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        mkdir -p "${SCCACHE_DIR:-$GITHUB_WORKSPACE/.sccache}"
+        sccache --start-server || true
+        sccache --show-stats || true
+
+    - name: Start sccache server (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $dir = "${env:SCCACHE_DIR}"
+        if (-not $dir) { $dir = Join-Path $env:GITHUB_WORKSPACE ".sccache" }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        sccache --start-server | Out-Null
+        sccache --show-stats

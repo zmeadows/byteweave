@@ -1,0 +1,48 @@
+---
+BasedOnStyle: LLVM
+Language: Cpp
+
+# --- Line length & indentation ---
+ColumnLimit: 100
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+IndentCaseLabels: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+NamespaceIndentation: None
+FixNamespaceComments: true
+CompactNamespaces: false
+
+IndentPPDirectives: AfterHash
+
+# --- Includes ---
+SortIncludes: false # Don't reorder; safer for amalgamation
+IncludeBlocks: Preserve # Keep grouping as written
+
+# --- Spacing & wrapping ---
+BreakBeforeBraces: Stroustrup
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+SpaceBeforeInheritanceColon: true
+SpaceBeforeCtorInitializerColon: true
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 2
+
+# --- Alignment (tasteful, not overbearing) ---
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+
+# --- Short forms / bin packing ---
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+BinPackArguments: false
+BinPackParameters: false
+
+# --- Pointers/refs ---
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# --- Comments ---
+ReflowComments: true
