@@ -196,10 +196,9 @@ jobs:
           $env:PATH = "$dir;$env:PATH"
           & $exe
 
-      - name: sccache stats
+      - name: sccache stats (final)
         if: always()
-        shell: bash
-        run: sccache --show-stats || true
+        uses: ./.github/actions/sccache-stats
 
   build-header:
     name: build-header (${{ matrix.os }}, ${{ matrix.compiler }})
@@ -276,7 +275,7 @@ jobs:
           #include "byteweave/byteweave.hpp"
           int main() { return 0; }
           CPP
-          "$CXX" -std=c++20 -DBYTEWEAVE_HEADER_ONLY=1 -Iinclude -Ibuild/ci-header/generated -c header_only.cpp -o /dev/null
+          "$CXX" -std=c++20 -DBYTEWEAVE_HEADER_ONLY=1 -Ibuild/ci-header/generated -Iinclude -c header_only.cpp -o /dev/null
 
       - name: Compile-only umbrella header Windows
         if: runner.os == 'Windows'
@@ -288,7 +287,7 @@ jobs:
           int main(){ return 0; }
           '@
           Set-Content -Path header_only.cpp -Value $code -Encoding UTF8
-          cl /nologo /std:c++20 /EHsc /c header_only.cpp /I include /I build\ci-header\generated
+          cl /nologo /EHsc /std:c++20 /DBYTEWEAVE_HEADER_ONLY=1 /I build\ci-header\generated /I include /c header_only.cpp
 
       - name: Build single header
         shell: bash
@@ -469,10 +468,9 @@ jobs:
           $env:PATH = "build/ci-header;$env:PATH"
           & $exe
 
-      - name: sccache stats
+      - name: sccache stats (final)
         if: always()
-        shell: bash
-        run: sccache --show-stats || true
+        uses: ./.github/actions/sccache-stats
 
   build-sanitizers:
     name: sanitizers (ubuntu clang asan+ubsan)
@@ -538,6 +536,10 @@ jobs:
             exit 1
           fi
           "$exe"
+
+      - name: sccache stats (final)
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   build-warnings:
     name: warnings (linux gcc+clang, macos clang, windows msvc)
@@ -631,3 +633,7 @@ jobs:
             exit 1
           fi
           "$exe"
+
+      - name: sccache stats (final)
+        if: always()
+        uses: ./.github/actions/sccache-stats

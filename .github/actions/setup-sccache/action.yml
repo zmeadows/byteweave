@@ -105,6 +105,8 @@ runs:
       run: |
         mkdir -p "${SCCACHE_DIR:-$GITHUB_WORKSPACE/.sccache}"
         sccache --start-server || true
+        sccache --zero-stats || true
+        echo "== sccache baseline (after zero) =="
         sccache --show-stats || true
 
     - name: Start sccache server (Windows)
@@ -115,4 +117,6 @@ runs:
         if (-not $dir) { $dir = Join-Path $env:GITHUB_WORKSPACE ".sccache" }
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
         sccache --start-server | Out-Null
+        sccache --zero-stats | Out-Null
+        Write-Host "== sccache baseline (after zero) =="
         sccache --show-stats
