@@ -20,9 +20,6 @@ option(BYTEWEAVE_WARNINGS "Enable common warning flags" ON)
 option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
 option(BYTEWEAVE_WARNINGS_STRICT "Enable extra-strict warnings (conversion, shadow, etc.)" OFF)
 
-# Recommended for static->shared consumption on ELF platforms.
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
 # If the user disables both library and single-header, there will be nothing to build.
 # We allow it (configure-only) but print a friendly warning.
 if(NOT BYTEWEAVE_BUILD_LIBRARY AND NOT BYTEWEAVE_BUILD_SINGLE_HEADER)
@@ -139,6 +136,9 @@ if(BYTEWEAVE_BUILD_LIBRARY)
     set_target_properties(byteweave PROPERTIES CXX_VISIBILITY_PRESET hidden
                                                VISIBILITY_INLINES_HIDDEN YES)
   endif()
+
+  # Recommended for static->shared consumption on ELF platforms.
+  set_target_properties(byteweave PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 # ----------------------------------------------------------------------------
@@ -197,7 +197,7 @@ if(BYTEWEAVE_BUILD_EXAMPLES)
     add_dependencies(example_single single_header)
     target_compile_definitions(
       example_single PRIVATE BYTEWEAVE_USE_SINGLE_HEADER=1
-                             BYTEWEAVE_SINGLE_HEADER=\"${BYTEWEAVE_SINGLE_HEADER}\")
+                             BYTEWEAVE_SINGLE_HEADER="${BYTEWEAVE_SINGLE_HEADER}")
     set(_examples_built TRUE)
   endif()
 
