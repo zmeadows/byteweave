@@ -276,7 +276,7 @@ jobs:
           #include "byteweave/byteweave.hpp"
           int main() { return 0; }
           CPP
-          "$CXX" -std=c++20 -DBYTEWEAVE_HEADER_ONLY=1 -Iinclude -Ibuild/ci-header/generated -c header_only.cpp -o /dev/null
+          "$CXX" -std=c++20 -DBYTEWEAVE_HEADER_ONLY=1 -Ibuild/ci-header/generated -Iinclude -c header_only.cpp -o /dev/null
 
       - name: Compile-only umbrella header Windows
         if: runner.os == 'Windows'
@@ -288,7 +288,7 @@ jobs:
           int main(){ return 0; }
           '@
           Set-Content -Path header_only.cpp -Value $code -Encoding UTF8
-          cl /nologo /std:c++20 /EHsc /c header_only.cpp /I include /I build\ci-header\generated
+          cl /nologo /EHsc /std:c++20 /DBYTEWEAVE_HEADER_ONLY=1 /I build\ci-header\generated /I include /c header_only.cpp
 
       - name: Build single header
         shell: bash
