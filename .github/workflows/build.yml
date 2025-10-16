@@ -196,10 +196,9 @@ jobs:
           $env:PATH = "$dir;$env:PATH"
           & $exe
 
-      - name: sccache stats
+      - name: sccache stats (final)
         if: always()
-        shell: bash
-        run: sccache --show-stats || true
+        uses: ./.github/actions/sccache-stats
 
   build-header:
     name: build-header (${{ matrix.os }}, ${{ matrix.compiler }})
@@ -469,10 +468,9 @@ jobs:
           $env:PATH = "build/ci-header;$env:PATH"
           & $exe
 
-      - name: sccache stats
+      - name: sccache stats (final)
         if: always()
-        shell: bash
-        run: sccache --show-stats || true
+        uses: ./.github/actions/sccache-stats
 
   build-sanitizers:
     name: sanitizers (ubuntu clang asan+ubsan)
@@ -538,6 +536,10 @@ jobs:
             exit 1
           fi
           "$exe"
+
+      - name: sccache stats (final)
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   build-warnings:
     name: warnings (linux gcc+clang, macos clang, windows msvc)
@@ -631,3 +633,7 @@ jobs:
             exit 1
           fi
           "$exe"
+
+      - name: sccache stats (final)
+        if: always()
+        uses: ./.github/actions/sccache-stats
