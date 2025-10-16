@@ -197,7 +197,7 @@ if(BYTEWEAVE_BUILD_EXAMPLES)
     add_dependencies(example_single single_header)
     target_compile_definitions(
       example_single PRIVATE BYTEWEAVE_USE_SINGLE_HEADER=1
-                             BYTEWEAVE_SINGLE_HEADER=\"${BYTEWEAVE_SINGLE_HEADER}\")
+                             BYTEWEAVE_SINGLE_HEADER="${BYTEWEAVE_SINGLE_HEADER}")
     set(_examples_built TRUE)
   endif()
 
