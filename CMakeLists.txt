@@ -30,6 +30,40 @@ if(NOT BYTEWEAVE_BUILD_LIBRARY AND NOT BYTEWEAVE_BUILD_SINGLE_HEADER)
 endif()
 
 # ----------------------------------------------------------------------------
+# Python
+# ----------------------------------------------------------------------------
+
+find_package(
+  Python3
+  COMPONENTS Interpreter
+  QUIET)
+if(NOT Python3_Interpreter_FOUND)
+  set(PYTHON_FOR_TOOLS python3)
+else()
+  set(PYTHON_FOR_TOOLS ${Python3_EXECUTABLE})
+endif()
+
+add_custom_target(
+  format
+  COMMAND ${PYTHON_FOR_TOOLS} ${CMAKE_SOURCE_DIR}/tools/format.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_custom_target(
+  format-check
+  COMMAND ${PYTHON_FOR_TOOLS} ${CMAKE_SOURCE_DIR}/tools/format.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  add_custom_target(
+    tidy
+    COMMAND ${PYTHON_FOR_TOOLS} ${CMAKE_SOURCE_DIR}/tools/tidy.py --p ${CMAKE_BINARY_DIR}
+            --warnings-as-errors
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+else()
+  message(STATUS "Enable CMAKE_EXPORT_COMPILE_COMMANDS=ON to use 'tidy' target")
+endif()
+
+# ----------------------------------------------------------------------------
 # Compile Commands toggles
 # ----------------------------------------------------------------------------
 option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in build dir" ON)
@@ -145,12 +179,6 @@ endif()
 # Single-header generation (optional; independent of library)
 # ----------------------------------------------------------------------------
 if(BYTEWEAVE_BUILD_SINGLE_HEADER)
-  # Only need Python if we're actually generating the header.
-  find_package(
-    Python3
-    COMPONENTS Interpreter
-    REQUIRED)
-
   # Allow overriding where the single header is written (defaults to the build dir).
   set(BYTEWEAVE_SINGLE_HEADER_OUTDIR
       "${CMAKE_CURRENT_BINARY_DIR}"
@@ -169,7 +197,7 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
   add_custom_command(
     OUTPUT ${BYTEWEAVE_SINGLE_HEADER}
     COMMAND
-      ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/amalgamate.py --entry
+      ${PYTHON_FOR_TOOLS} ${CMAKE_CURRENT_SOURCE_DIR}/tools/amalgamate.py --entry
       ${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/byteweave.hpp --out ${BYTEWEAVE_SINGLE_HEADER}
       --version ${PROJECT_VERSION} --generated ${CMAKE_CURRENT_BINARY_DIR}/generated
     DEPENDS ${BYTEWEAVE_PUBLIC_HEADERS} ${BYTEWEAVE_GEN_HEADERS}

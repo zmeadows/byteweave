@@ -3,7 +3,7 @@ name: build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - "CMakeLists.txt"
       - "cmake/**"
@@ -76,8 +76,6 @@ jobs:
         id: setup_cmake
         uses: ./.github/actions/setup-cmake-if-needed
         with:
-          min_version: "3.20.0"
-          cmake_version: "3.29.*"
           python_bin: ${{ steps.setup_python.outputs.python_bin }}
 
       - name: Restore sccache object cache

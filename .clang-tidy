@@ -1,0 +1,12 @@
+---
+# Conservative baseline to keep noise low; tighten later.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-use-nullptr,
+  modernize-use-override
+
+WarningsAsErrors: ""
+HeaderFilterRegex: "^(include|src|examples)/"
+FormatStyle: file

@@ -1,0 +1,81 @@
+---
+name: lint (format + tidy)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  format:
+    name: clang-format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure clang-format
+        shell: bash
+        run: |
+          set -e
+          CF_BIN=""
+          if command -v clang-format >/dev/null 2>&1; then
+            CF_BIN="$(command -v clang-format)"
+          elif command -v clang-format-18 >/dev/null 2>&1; then
+            CF_BIN="$(command -v clang-format-18)"
+          elif command -v clang-format-17 >/dev/null 2>&1; then
+            CF_BIN="$(command -v clang-format-17)"
+          elif command -v clang-format-16 >/dev/null 2>&1; then
+            CF_BIN="$(command -v clang-format-16)"
+          else
+            sudo apt-get update
+            sudo apt-get install -y clang-format
+            CF_BIN="$(command -v clang-format)"
+          fi
+          echo "CLANG_FORMAT_BIN=$CF_BIN" >> "$GITHUB_ENV"
+          "$CF_BIN" --version
+
+      - name: Check formatting
+        run: |
+          python3 tools/format.py --check --clang-format "$CLANG_FORMAT_BIN"
+
+  tidy:
+    name: clang-tidy (no build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure clang-tidy
+        shell: bash
+        run: |
+          set -e
+          CT_BIN=""
+          if command -v clang-tidy >/dev/null 2>&1; then
+            CT_BIN="$(command -v clang-tidy)"
+          elif command -v clang-tidy-18 >/dev/null 2>&1; then
+            CT_BIN="$(command -v clang-tidy-18)"
+          elif command -v clang-tidy-17 >/dev/null 2>&1; then
+            CT_BIN="$(command -v clang-tidy-17)"
+          elif command -v clang-tidy-16 >/dev/null 2>&1; then
+            CT_BIN="$(command -v clang-tidy-16)"
+          else
+            sudo apt-get update
+            sudo apt-get install -y clang clang-tidy
+            CT_BIN="$(command -v clang-tidy)"
+          fi
+          echo "CLANG_TIDY_BIN=$CT_BIN" >> "$GITHUB_ENV"
+          "$CT_BIN" --version
+
+      - name: Configure only (produce compile_commands.json)
+        run: |
+          cmake -S . -B build/ci-tidy -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBYTEWEAVE_BUILD_LIBRARY=ON \
+            -DBYTEWEAVE_BUILD_SINGLE_HEADER=OFF \
+            -DBYTEWEAVE_BUILD_EXAMPLES=ON
+
+      - name: Run clang-tidy
+        env:
+          CLANG_TIDY: ${{ env.CLANG_TIDY_BIN }}
+        run: |
+          python3 tools/tidy.py --p build/ci-tidy --warnings-as-errors --jobs 4
