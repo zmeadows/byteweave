@@ -1,176 +1,213 @@
 #!/usr/bin/env python3
-"""
-amalgamate.py — flatten byteweave headers into a single-header distribution.
+from __future__ import annotations
 
-Usage:
-  python3 tools/amalgamate.py --entry include/byteweave/byteweave.hpp \
-                              --out dist/byteweave-X.Y.Z.single.hpp   \
-                              --version X.Y.Z                         \
-                              [--generated build/generated]
-
-Rules:
-- Inlines any #include of headers under the "byteweave/" include subtree (including .inl).
-- Leaves system headers (#include <vector>, etc.) untouched.
-- Strips #pragma once lines from inlined headers.
-- Prepends a small preamble that sets BYTEWEAVE_AMALGAMATED=1 (config.hpp aliases BYTEWEAVE_HEADER_ONLY to it) and provides export shims.
-- Inlines byteweave/config.hpp directly (authoritative defaults).
-- Inlines the configured byteweave/version.hpp from --generated if present; otherwise
-  bakes version macros from --version as a fallback.
-- Skips byteweave/export.hpp (we provide BW_API shim in preamble).
-"""
 import argparse
-import datetime
-import pathlib
 import re
 import sys
-from typing import Optional
-
-RE_INCLUDE = re.compile(r'^\s*#\s*include\s*([<"])([^">]+)[>"]')
-RE_SEMVER = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)(?:[-+].*)?\s*$")
+from dataclasses import dataclass
+from pathlib import Path
 
 
-def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--entry", required=True, help="Path to the umbrella header (byteweave.hpp)"
+class AmalgamationError(Exception):
+    """Fatal amalgamation error for invalid input or missing files."""
+
+
+@dataclass
+class Args:
+    entry: Path
+    out: Path
+    version: str
+    generated: Path | None
+    repo_root: Path
+
+
+def parse_args(argv: list[str]) -> Args:
+    p = argparse.ArgumentParser(
+        description="Amalgamate Byteweave headers into a single header."
     )
-    ap.add_argument("--out", required=True, help="Output single header path")
-    ap.add_argument(
-        "--version", required=True, help="Version string to bake in (e.g., 0.1.0)"
+    p.add_argument(
+        "--entry",
+        required=True,
+        help="Umbrella header: include/byteweave/byteweave.hpp",
     )
-    ap.add_argument(
+    p.add_argument(
+        "--out",
+        required=True,
+        help="Output single-header path (e.g., dist/byteweave-X.Y.Z.single.hpp)",
+    )
+    p.add_argument(
+        "--version",
+        required=True,
+        help="Version X.Y.Z (used when --generated is not provided)",
+    )
+    p.add_argument(
         "--generated",
-        default=None,
-        help="Path to directory containing configured headers (e.g., build/generated)",
+        help="Build include dir containing generated/byteweave/version.hpp",
     )
-    return ap.parse_args()
+    ns = p.parse_args(argv)
+
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent
+
+    def abs_or_repo(pth: str) -> Path:
+        p = Path(pth)
+        return (repo_root / p).resolve() if not p.is_absolute() else p.resolve()
+
+    entry = abs_or_repo(ns.entry)
+    out = abs_or_repo(ns.out)
+    generated: Path | None = abs_or_repo(ns.generated) if ns.generated else None
+
+    return Args(
+        entry=entry,
+        out=out,
+        version=ns.version,
+        generated=generated,
+        repo_root=repo_root,
+    )
+
+
+LOCAL_PREFIX = "byteweave/"
+EXPORT_HEADER = f"{LOCAL_PREFIX}export.hpp"
+VERSION_HEADER = f"{LOCAL_PREFIX}version.hpp"
+
+_include_rx = re.compile(r'^\s*#\s*include\s*([<"])([^">]+)[>"]')
+
+
+def parse_include(line: str) -> tuple[str, str] | None:
+    m = _include_rx.match(line)
+    if not m:
+        return None
+    return m.group(1), m.group(2).strip()
 
 
 def is_local_byteweave(path: str) -> bool:
-    return path.startswith("byteweave/")
+    return path.startswith(LOCAL_PREFIX)
+
+
+def normalize_newlines(s: str) -> str:
+    return s.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def version_triplet(version: str) -> tuple[int, int, int]:
+    m = re.match(r"^\s*(\d+)\.(\d+)\.(\d+)\s*$", version)
+    if not m:
+        raise AmalgamationError(f"Invalid --version '{version}'. Expected X.Y.Z")
+    return int(m.group(1)), int(m.group(2)), int(m.group(3))
 
 
 def resolve_local(
-    path: str, repo_root: pathlib.Path, gen_dir: Optional[pathlib.Path]
-) -> pathlib.Path:
-    # Prefer configured version header if requested and available
-    if path == "byteweave/version.hpp" and gen_dir is not None:
-        cand = gen_dir / "byteweave" / "version.hpp"
-        if cand.exists():
+    path_fragment: str, repo_root: Path, generated: Path | None
+) -> Path | None:
+    if path_fragment == EXPORT_HEADER:
+        return None
+    if path_fragment == VERSION_HEADER:
+        if generated is not None:
+            cand = (generated / path_fragment).resolve()
+            if not cand.exists():
+                raise AmalgamationError(
+                    f"Expected generated version header missing: {cand}"
+                )
             return cand
-    # Otherwise fall back to source include tree
-    return repo_root / "include" / path
+        return Path("__SYNTHESIZE_VERSION__")
+    cand = (repo_root / "include" / path_fragment).resolve()
+    if cand.exists():
+        return cand
+    raise AmalgamationError(f"Unable to resolve local include '{path_fragment}'")
 
 
 def inline_file(
-    p: pathlib.Path,
-    repo_root: pathlib.Path,
-    gen_dir: Optional[pathlib.Path],
-    seen: set[str],
+    path: Path, repo_root: Path, generated: Path | None, seen: set[Path]
 ) -> str:
-    text = p.read_text(encoding="utf-8")
-    # In single-header mode we set BYTEWEAVE_AMALGAMATED=1 in the preamble.
-    # config.hpp defines BYTEWEAVE_HEADER_ONLY to BYTEWEAVE_AMALGAMATED if not already defined; this keeps a single textual definition.
+    if path in seen:
+        return ""
+    if str(path) == "__SYNTHESIZE_VERSION__":
+        return ""
+    if not path.exists():
+        raise AmalgamationError(f"Missing input file: {path}")
+    seen.add(path)
+    text = normalize_newlines(path.read_text(encoding="utf-8"))
     out_lines: list[str] = []
     for line in text.splitlines():
         if line.strip().startswith("#pragma once"):
             continue
-        m = RE_INCLUDE.match(line)
-        if m:
-            inc = m.group(2)
-            if is_local_byteweave(inc):
-                # Skip export.hpp entirely (we provide BW_API shim in preamble)
-                base = inc.split("/")[-1]
-                if base in ("export.hpp",):
-                    continue
-
-                # If no configured headers dir, skip version.hpp (preamble provides version macros)
-                if inc == "byteweave/version.hpp" and gen_dir is None:
-                    continue
-
-                full = resolve_local(inc, repo_root, gen_dir)
-                key = str(full.resolve())
-                if key in seen:
-                    continue
-                seen.add(key)
-                out_lines.append(f"\n// ---- Begin inlined: <{inc}> ----\n")
-                out_lines.append(inline_file(full, repo_root, gen_dir, seen))
-                out_lines.append(f"\n// ---- End inlined: <{inc}> ----\n")
-                continue
-        out_lines.append(line)
+        parsed = parse_include(line)
+        if not parsed:
+            out_lines.append(line)
+            continue
+        _, inc = parsed
+        # Inline any include under byteweave/ (regardless of <> or "")
+        if not is_local_byteweave(inc):
+            out_lines.append(line)
+            continue
+        if inc == EXPORT_HEADER:
+            continue
+        target = resolve_local(inc, repo_root, generated)
+        if target is None:
+            continue
+        if str(target) == "__SYNTHESIZE_VERSION__":
+            continue
+        out_lines.append(f"// begin: {inc}")
+        out_lines.append(inline_file(target, repo_root, generated, seen))
+        out_lines.append(f"// end: {inc}")
     return "\n".join(out_lines)
 
 
-def main() -> None:
-    args = parse_args()
-    repo_root = pathlib.Path(__file__).resolve().parents[1]
-    entry = pathlib.Path(args.entry)
-    if not entry.exists():
-        print(f"Entry header not found: {entry}", file=sys.stderr)
-        sys.exit(2)
+def version_text(version: str) -> str:
+    major, minor, patch = version_triplet(version)
+    # No '#pragma once' here to keep exactly one pragma in output (preamble only)
+    return f"""#define BYTEWEAVE_VERSION_MAJOR {major}
+#define BYTEWEAVE_VERSION_MINOR {minor}
+#define BYTEWEAVE_VERSION_PATCH {patch}
+#define BYTEWEAVE_VERSION_STRING "{major}.{minor}.{patch}"
+"""
 
-    gen_dir = pathlib.Path(args.generated).resolve() if args.generated else None
 
-    # Determine whether to emit version macros in the preamble (fallback)
-    use_preamble_version = True
-    if gen_dir is not None and (gen_dir / "byteweave" / "version.hpp").exists():
-        use_preamble_version = False
-
-    # Parse numerics from --version for the fallback case
-    maj, minor, patch = "0", "0", "0"
-    m = RE_SEMVER.match(args.version)
-    if m:
-        maj, minor, patch = m.groups()
-    else:
-        if use_preamble_version:
-            print(
-                f"[amalgamate] WARN: '--version {args.version}' is not SemVer (X.Y.Z); using 0.0.0 numerics",
-                file=sys.stderr,
-            )
-
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    preamble = f"""// byteweave single-header (amalgamated)
-// Generated by tools/amalgamate.py on {ts}
-// Version: {args.version}
-// DO NOT EDIT THIS FILE MANUALLY.
-
-#pragma once
-
+def build_preamble() -> str:
+    # Do NOT define BYTEWEAVE_HEADER_ONLY here; config.hpp provides the alias.
+    return """#pragma once
 #ifndef BYTEWEAVE_AMALGAMATED
 #  define BYTEWEAVE_AMALGAMATED 1
 #endif
-"""
-    if use_preamble_version:
-        preamble += f"""
-// Version macros (baked-in fallback)
-#ifndef BYTEWEAVE_VERSION_MAJOR
-#  define BYTEWEAVE_VERSION_MAJOR {maj}
-#endif
-#ifndef BYTEWEAVE_VERSION_MINOR
-#  define BYTEWEAVE_VERSION_MINOR {minor}
-#endif
-#ifndef BYTEWEAVE_VERSION_PATCH
-#  define BYTEWEAVE_VERSION_PATCH {patch}
-#endif
-#ifndef BYTEWEAVE_VERSION_STRING
-#  define BYTEWEAVE_VERSION_STRING "{args.version}"
-#endif
-"""
 
-    preamble += """
-// Export shims in single-header mode
 #ifndef BW_API
 #  define BW_API
 #endif
 """
 
-    # TODO[@zmeadows][P1]: check for errors here
-    body = inline_file(entry, repo_root, gen_dir, seen=set())
-    out_path = pathlib.Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(preamble + "\n" + body + "\n", encoding="utf-8")
-    print(f"Wrote single header to {out_path}")
+
+def main() -> None:
+    args = parse_args(sys.argv[1:])
+    if not args.entry.exists():
+        raise AmalgamationError(f"--entry not found: {args.entry}")
+    if args.generated is not None and not args.generated.exists():
+        raise AmalgamationError(f"--generated directory not found: {args.generated}")
+    seen: set[Path] = set()
+    body = inline_file(args.entry, args.repo_root, args.generated, seen)
+    needs_version = True
+    if args.generated is not None:
+        gen_version = (args.generated / VERSION_HEADER).resolve()
+        if gen_version.exists():
+            needs_version = False
+    if "BYTEWEAVE_VERSION_MAJOR" in body:
+        needs_version = False
+    preamble = build_preamble()
+    pieces: list[str] = [preamble]
+    if needs_version:
+        pieces.append("// synthesized: byteweave/version.hpp")
+        pieces.append(version_text(args.version))
+    pieces.append(body)
+    out_text = "\n".join(pieces).rstrip() + "\n"
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(out_text, encoding="utf-8")
+    print(f"Wrote single header to {args.out}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except AmalgamationError as e:
+        print(f"[amalgamate] error: {e}", file=sys.stderr)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        print("[amalgamate] interrupted", file=sys.stderr)
+        sys.exit(130)

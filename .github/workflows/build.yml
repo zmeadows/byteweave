@@ -164,6 +164,7 @@ jobs:
         run: |
           $lib = "${{ steps.locate_shared.outputs.path }}".Replace('/','\')
           & "dumpbin.exe" /EXPORTS "$lib" | Select-Object -First 200 | Out-String
+
       - name: Run example_lib Linux and macOS
         if: runner.os != 'Windows'
         shell: bash
