@@ -1,0 +1,140 @@
+---
+name: package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  # required if we publish a GitHub Release
+  contents: write
+
+jobs:
+  package:
+    name: package (install + cpack + verify)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup CMake (if needed)
+        uses: ./.github/actions/setup-cmake-if-needed
+      - name: Setup Ninja
+        uses: ./.github/actions/setup-ninja
+      - name: Setup Python (if needed)
+        uses: ./.github/actions/setup-python-if-needed
+
+      - name: Configure (preset)
+        run: cmake --preset ci-package
+
+      - name: Build single header
+        run: cmake --build --preset ci-package --target single_header --parallel
+
+      - name: Install to staging prefix
+        run: cmake --install build/ci-package --prefix build/_staging
+
+      - name: Sanity checks (installed tree)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la build/_staging
+          test -d build/_staging/include/byteweave
+          test -f build/_staging/include/byteweave/version.hpp
+          # Check single-header presence (versioned file)
+          test -d build/_staging/share/byteweave
+          ls build/_staging/share/byteweave/byteweave-*.single.hpp >/dev/null
+
+      - name: Consumer compile test (headers target)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-consume-multi && cd ci-consume-multi
+          cat > CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(consume_multi LANGUAGES CXX)
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+          find_package(byteweave CONFIG REQUIRED)
+          add_executable(try_multi main.cpp)
+          target_link_libraries(try_multi PRIVATE byteweave::headers)
+          EOF
+          cat > main.cpp << 'EOF'
+          #include <byteweave/byteweave.hpp>
+          int main() { return 0; }
+          EOF
+          cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/_staging"
+          cmake --build build
+
+      - name: Consumer compile test (single target)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-consume-single && cd ci-consume-single
+          cat > CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(consume_single LANGUAGES CXX)
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+          find_package(byteweave CONFIG REQUIRED)
+          add_executable(try_single main.cpp)
+          target_link_libraries(try_single PRIVATE byteweave::single)
+          EOF
+          cat > main.cpp << 'EOF'
+          #include <byteweave/byteweave.hpp>
+          int main() { return 0; }
+          EOF
+          cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/_staging"
+          cmake --build build
+
+      - name: Package (CPack)
+        run: |
+          cpack --config build/ci-package/CPackConfig.cmake -B artifacts/
+          ls -la artifacts/
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: byteweave-packages
+          path: artifacts/*
+
+  release:
+    name: publish release (tags on main only)
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag is on main
+        id: maincheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "is_main_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_main_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifacts
+        if: steps.maincheck.outputs.is_main_tag == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: byteweave-packages
+          path: artifacts
+
+      - name: Create GitHub Release
+        if: steps.maincheck.outputs.is_main_tag == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Byteweave ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: artifacts/*

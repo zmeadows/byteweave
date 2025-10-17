@@ -248,6 +248,63 @@ if(BYTEWEAVE_BUILD_TESTS)
 endif()
 
 # ----------------------------------------------------------------------------
+# Install rules (headers-only + single-header) and CMake package config
+# ----------------------------------------------------------------------------
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+# Install public headers
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/byteweave"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+# Install generated version header
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/byteweave/version.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/byteweave")
+
+# Install the single-header artifact (versioned filename)
+if(BYTEWEAVE_BUILD_SINGLE_HEADER)
+  if(EXISTS "${BYTEWEAVE_SINGLE_HEADER}")
+    install(FILES "${BYTEWEAVE_SINGLE_HEADER}" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
+  else()
+    message(
+      STATUS
+        "Note: single-header not built yet; run 'cmake --build . --target single_header' before install."
+    )
+  endif()
+endif()
+
+# Package config: byteweaveConfig.cmake and version file
+set(_BW_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/byteweave")
+write_basic_package_version_file(
+  "${PROJECT_BINARY_DIR}/byteweaveConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY SameMajorVersion)
+
+configure_file("${PROJECT_SOURCE_DIR}/cmake/byteweaveConfig.cmake.in"
+               "${PROJECT_BINARY_DIR}/byteweaveConfig.cmake" @ONLY)
+
+install(FILES "${PROJECT_BINARY_DIR}/byteweaveConfig.cmake"
+              "${PROJECT_BINARY_DIR}/byteweaveConfigVersion.cmake" DESTINATION "${_BW_CMAKE_DIR}")
+
+# Optionally include license/readme if present
+if(EXISTS "${PROJECT_SOURCE_DIR}/LICENSE")
+  install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
+endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/README.md")
+  install(FILES "${PROJECT_SOURCE_DIR}/README.md" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
+endif()
+
+# ----------------------------------------------------------------------------
+# CPack (archives from install rules)
+# ----------------------------------------------------------------------------
+set(CPACK_PACKAGE_NAME "byteweave")
+set(CPACK_PACKAGE_VENDOR "Byteweave")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "maintainers@byteweave.invalid")
+set(CPACK_GENERATOR "TGZ;ZIP")
+include(CPack)
+
+# ----------------------------------------------------------------------------
 # Friendly status summary
 # ----------------------------------------------------------------------------
 message(STATUS "Byteweave configuration:")
