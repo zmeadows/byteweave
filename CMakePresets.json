@@ -3,6 +3,21 @@
   "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
   "configurePresets": [
     {
+      "name": "dev",
+      "displayName": "Dev (RelWithDebInfo + compile_commands)",
+      "binaryDir": "build/dev",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_COPY_COMPILE_COMMANDS": "ON",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "ON",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "BYTEWEAVE_BUILD_TESTS": "ON"
+      }
+    },
+    {
       "name": "ci-base",
       "hidden": true,
       "generator": "Ninja",
@@ -142,6 +157,13 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "displayName": "Dev build",
+      "targets": ["all"],
+      "verbose": true
+    },
     {
       "name": "ci-lib-static",
       "configurePreset": "ci-lib-static",
