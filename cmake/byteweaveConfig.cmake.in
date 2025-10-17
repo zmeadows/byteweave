@@ -1,0 +1,19 @@
+@PACKAGE_INIT@
+include_guard(GLOBAL)
+
+# Provide headers-only and single-header interface targets.
+if (NOT TARGET byteweave::headers)
+  add_library(byteweave::headers INTERFACE IMPORTED)
+  target_include_directories(byteweave::headers INTERFACE "${PACKAGE_PREFIX_DIR}/include")
+endif()
+
+if (NOT TARGET byteweave::single)
+  add_library(byteweave::single INTERFACE IMPORTED)
+  # Make include path available too (harmless, even if not strictly required)
+  target_include_directories(byteweave::single INTERFACE "${PACKAGE_PREFIX_DIR}/include")
+  # Point umbrella to the installed single-header path
+  set(_BW_SINGLE "${PACKAGE_PREFIX_DIR}/share/byteweave/byteweave-@PROJECT_VERSION@.single.hpp")
+  target_compile_definitions(byteweave::single INTERFACE BYTEWEAVE_USE_SINGLE_HEADER=1)
+  # Pass quoted path via -D to avoid escaping pitfalls with compile_definitions
+  target_compile_options(byteweave::single INTERFACE "-DBYTEWEAVE_SINGLE_HEADER=\\\"${_BW_SINGLE}\\\"")
+endif()
