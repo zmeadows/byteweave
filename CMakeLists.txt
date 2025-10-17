@@ -187,9 +187,12 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
   # Gather headers as dependencies so the amalgamated file rebuilds when they change.
   # GLOB is fine here because we only use it for dependencies; CONFIGURE_DEPENDS
   # makes CMake re-run if headers are added/removed.
-  file(GLOB_RECURSE BYTEWEAVE_PUBLIC_HEADERS CONFIGURE_DEPENDS
-       "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/*.hpp"
-       "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/detail/*.inl")
+  file(
+    GLOB_RECURSE
+    BYTEWEAVE_PUBLIC_HEADERS
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/detail/*.inl")
 
   set(BYTEWEAVE_SINGLE_HEADER
       "${BYTEWEAVE_SINGLE_HEADER_OUTDIR}/byteweave-${PROJECT_VERSION}.single.hpp")
