@@ -1,0 +1,23 @@
+@PACKAGE_INIT@
+include_guard(GLOBAL)
+
+# These are expanded by configure_package_config_file() with relocation support
+set_and_check(BYTEWEAVE_INCLUDE_DIR "@PACKAGE_BYTEWEAVE_INCLUDE_INSTALL_DIR@")
+set_and_check(BYTEWEAVE_SHARE_DIR "@PACKAGE_BYTEWEAVE_SHARE_INSTALL_DIR@")
+
+if(NOT TARGET byteweave::headers)
+  add_library(byteweave::headers INTERFACE IMPORTED)
+  target_include_directories(byteweave::headers INTERFACE "${BYTEWEAVE_INCLUDE_DIR}")
+endif()
+
+if(NOT TARGET byteweave::single)
+  add_library(byteweave::single INTERFACE IMPORTED)
+  target_include_directories(byteweave::single INTERFACE "${BYTEWEAVE_INCLUDE_DIR}")
+  target_compile_definitions(byteweave::single INTERFACE BYTEWEAVE_USE_SINGLE_HEADER=1)
+  # Pass the installed single-header path as a -D define (properly quoted)
+  target_compile_options(
+    byteweave::single
+    INTERFACE
+      "-DBYTEWEAVE_SINGLE_HEADER=\\\"${BYTEWEAVE_SHARE_DIR}/byteweave-@PROJECT_VERSION@.single.hpp\\\""
+  )
+endif()

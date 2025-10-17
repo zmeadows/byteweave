@@ -126,6 +126,19 @@
         "BYTEWEAVE_BUILD_EXAMPLES": "OFF",
         "BYTEWEAVE_BUILD_TESTS": "ON"
       }
+    },
+    {
+      "name": "ci-package",
+      "displayName": "CI package (headers + single header)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-package",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BYTEWEAVE_BUILD_LIBRARY": "OFF",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "ON",
+        "BYTEWEAVE_BUILD_EXAMPLES": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -183,6 +196,13 @@
       "configurePreset": "ci-tests",
       "displayName": "CI Build (tests)",
       "targets": ["all"],
+      "verbose": true
+    },
+    {
+      "name": "ci-package",
+      "configurePreset": "ci-package",
+      "displayName": "CI Build (package)",
+      "targets": ["single_header"],
       "verbose": true
     }
   ]
