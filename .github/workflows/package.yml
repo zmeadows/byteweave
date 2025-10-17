@@ -41,11 +41,23 @@ jobs:
         run: |
           set -euo pipefail
           ls -la build/_staging
+          ls -la build/_staging/share/byteweave || true
+
+          # Headers present?
           test -d build/_staging/include/byteweave
           test -f build/_staging/include/byteweave/version.hpp
-          # Check single-header presence (versioned file)
-          test -d build/_staging/share/byteweave
-          ls build/_staging/share/byteweave/byteweave-*.single.hpp >/dev/null
+
+          # Resolve project version from the configure step
+          VER="$(grep -E '^byteweave_VERSION:STATIC=' build/ci-package/CMakeCache.txt | cut -d= -f2)"
+          echo "Detected version: $VER"
+
+          # Deterministic single-header path (matches your CMakeLists.txt)
+          SH="build/_staging/share/byteweave/byteweave-${VER}.single.hpp"
+          echo "Expecting single header at: $SH"
+          test -f "$SH" || { ls -la build/_staging/share/byteweave || true; exit 2; }
+
+          # sanity check that the installed Config refers to the same path
+          grep -F "byteweave-${VER}.single.hpp" build/_staging/lib/cmake/byteweave/byteweaveConfig.cmake >/dev/null
 
       - name: Consumer compile test (headers target)
         shell: bash
