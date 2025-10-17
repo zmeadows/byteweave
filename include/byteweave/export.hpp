@@ -1,7 +1,6 @@
 #pragma once
 
-// Use the existing CMake option propagated as a public define.
-// Default to 0 when included outside of our build (e.g., single-header vendoring).
+// Default to 0 when included outside of our build (e.g., single-header)
 #if !defined(BYTEWEAVE_BUILD_SHARED)
 #  define BYTEWEAVE_BUILD_SHARED 0
 #endif

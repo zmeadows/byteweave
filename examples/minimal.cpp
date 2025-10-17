@@ -3,8 +3,8 @@
 #include <iostream>
 #include <vector>
 
-#if defined(BYTEWEAVE_USE_SINGLE_HEADER)
 // BYTEWEAVE_SINGLE_HEADER is a string literal path set by the build.
+#if defined(BYTEWEAVE_USE_SINGLE_HEADER)
 #  include BYTEWEAVE_SINGLE_HEADER
 #else
 #  include <byteweave/byteweave.hpp>
