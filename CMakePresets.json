@@ -100,6 +100,32 @@
       "cacheVariables": {
         "BYTEWEAVE_WARNINGS_STRICT": "ON"
       }
+    },
+    {
+      "name": "ci-tidy",
+      "displayName": "CI clang-tidy (RelWithDebInfo)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-tidy",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "OFF",
+        "BYTEWEAVE_BUILD_EXAMPLES": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "ci-tests",
+      "displayName": "CI Tests (RelWithDebInfo)",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BYTEWEAVE_BUILD_LIBRARY": "ON",
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": "OFF",
+        "BYTEWEAVE_BUILD_EXAMPLES": "OFF",
+        "BYTEWEAVE_BUILD_TESTS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -144,6 +170,20 @@
       "configurePreset": "ci-warnings-msvc",
       "displayName": "CI Build warnings (msvc)",
       "targets": ["all"]
+    },
+    {
+      "name": "ci-tidy",
+      "configurePreset": "ci-tidy",
+      "displayName": "CI Build (clang-tidy)",
+      "targets": ["all"],
+      "verbose": true
+    },
+    {
+      "name": "ci-tests",
+      "configurePreset": "ci-tests",
+      "displayName": "CI Build (tests)",
+      "targets": ["all"],
+      "verbose": true
     }
   ]
 }

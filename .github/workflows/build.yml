@@ -3,7 +3,7 @@ name: build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - "CMakeLists.txt"
       - "cmake/**"
@@ -76,8 +76,6 @@ jobs:
         id: setup_cmake
         uses: ./.github/actions/setup-cmake-if-needed
         with:
-          min_version: "3.20.0"
-          cmake_version: "3.29.*"
           python_bin: ${{ steps.setup_python.outputs.python_bin }}
 
       - name: Restore sccache object cache
@@ -164,6 +162,7 @@ jobs:
         run: |
           $lib = "${{ steps.locate_shared.outputs.path }}".Replace('/','\')
           & "dumpbin.exe" /EXPORTS "$lib" | Select-Object -First 200 | Out-String
+
       - name: Run example_lib Linux and macOS
         if: runner.os != 'Windows'
         shell: bash
@@ -633,6 +632,44 @@ jobs:
             exit 1
           fi
           "$exe"
+
+      - name: sccache stats (final)
+        if: always()
+        uses: ./.github/actions/sccache-stats
+
+  tests:
+    name: tests (ci-tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Ninja
+        uses: ./.github/actions/setup-ninja
+
+      - name: Setup CMake (if needed)
+        uses: ./.github/actions/setup-cmake-if-needed
+
+      - name: Restore sccache object cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ runner.os }}-lib-${{ matrix.compiler }}-shared-${{ matrix.shared }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'include/**', 'src/**', 'tools/amalgamate.py') }}
+          restore-keys: |
+            ${{ runner.os }}-lib-${{ matrix.compiler }}-shared-${{ matrix.shared }}-
+
+      - name: Setup sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
+      - name: Configure (preset)
+        run: cmake --preset ci-tests
+
+      - name: Build (preset)
+        run: cmake --build --preset ci-tests --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build/ci-tests --output-on-failure -j 2
 
       - name: sccache stats (final)
         if: always()
