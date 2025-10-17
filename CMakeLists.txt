@@ -244,7 +244,7 @@ endif()
 # =============================================================================
 # Tests (optional)
 # =============================================================================
-option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" ON)
+option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" OFF)
 if(BYTEWEAVE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
