@@ -3,7 +3,6 @@
 #include <iostream>
 #include <vector>
 
-// BYTEWEAVE_SINGLE_HEADER is a string literal path set by the build.
 #if defined(BYTEWEAVE_USE_SINGLE_HEADER)
 #  include BYTEWEAVE_SINGLE_HEADER
 #else

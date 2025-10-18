@@ -19,6 +19,8 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
+        "BYTEWEAVE_CONSUME_MODE": "library",
+
         "BYTEWEAVE_BUILD_EXAMPLES": true,
         "BYTEWEAVE_BUILD_LIBRARY": true,
         "BYTEWEAVE_BUILD_SHARED": true,
@@ -58,6 +60,7 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_C_COMPILER_LAUNCHER": "sccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "sccache",
+
         "BYTEWEAVE_BUILD_EXAMPLES": true,
         "BYTEWEAVE_BUILD_TESTS": true,
         "BYTEWEAVE_COPY_COMPILE_COMMANDS": false,
@@ -73,6 +76,8 @@
       "hidden": true,
       "inherits": "ci-base",
       "cacheVariables": {
+        "BYTEWEAVE_CONSUME_MODE": "library",
+
         "BYTEWEAVE_BUILD_LIBRARY": true,
         "BYTEWEAVE_BUILD_SINGLE_HEADER": false
       }
@@ -97,12 +102,27 @@
     },
 
     {
-      "name": "ci-header",
+      "name": "ci-single-header",
       "inherits": ["ci-base"],
-      "binaryDir": "build/ci-header",
+      "binaryDir": "build/ci-single-header",
       "cacheVariables": {
+        "BYTEWEAVE_CONSUME_MODE": "single-header",
+
         "BYTEWEAVE_BUILD_LIBRARY": false,
-        "BYTEWEAVE_BUILD_SINGLE_HEADER": true
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": true,
+        "BYTEWEAVE_SINGLE_HEADER_IN_ALL": true
+      }
+    },
+
+    {
+      "name": "ci-header-only",
+      "inherits": ["ci-base"],
+      "binaryDir": "build/ci-header-only",
+      "cacheVariables": {
+        "BYTEWEAVE_CONSUME_MODE": "header-only",
+
+        "BYTEWEAVE_BUILD_LIBRARY": false,
+        "BYTEWEAVE_BUILD_SINGLE_HEADER": false
       }
     },
 
@@ -138,7 +158,8 @@
     { "name": "dev-release", "configurePreset": "dev-release", "verbose": true },
     { "name": "ci-lib-static", "configurePreset": "ci-lib-static" },
     { "name": "ci-lib-shared", "configurePreset": "ci-lib-shared" },
-    { "name": "ci-header", "configurePreset": "ci-header" },
+    { "name": "ci-single-header", "configurePreset": "ci-single-header" },
+    { "name": "ci-header-only", "configurePreset": "ci-header-only" },
     { "name": "ci-tidy", "configurePreset": "ci-tidy" },
     { "name": "ci-package", "configurePreset": "ci-package" }
   ]

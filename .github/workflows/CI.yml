@@ -1,6 +1,8 @@
 ---
 name: CI
 
+# TODO[@zmeadows][P1]: header-only job
+
 on:
   workflow_dispatch:
   push:
@@ -44,7 +46,7 @@ jobs:
           # prettier-ignore-end
 
     env:
-      BUILD_PRESET: ${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+      CMAKE_PRESET: ${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
       BUILD_DIR: build/${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
 
     steps:
@@ -84,14 +86,14 @@ jobs:
 
       - name: CMake Configure
         run: >
-          cmake --preset ${{ env.BUILD_PRESET }}
+          cmake --preset ${{ env.CMAKE_PRESET }}
           ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
           ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
           ${{ matrix.cfg.lto && '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON' || '' }}
           ${{ matrix.cfg.stdlib == 'libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++' || '' }}
 
       - name: CMake Build
-        run: cmake --build --preset ${{ env.BUILD_PRESET }}
+        run: cmake --build --preset ${{ env.CMAKE_PRESET }}
 
       - name: Run Examples
         run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure --no-tests=error
@@ -118,8 +120,8 @@ jobs:
           # prettier-ignore-end
 
     env:
-      BUILD_PRESET: ci-header
-      BUILD_DIR: build/ci-header
+      CMAKE_PRESET: ci-single-header
+      BUILD_DIR: build/ci-single-header
 
     steps:
       - name: Show Matrix
@@ -152,18 +154,18 @@ jobs:
 
       - name: CMake Configure
         run: >
-          cmake --preset ${{ env.BUILD_PRESET }}
+          cmake --preset ${{ env.CMAKE_PRESET }}
           ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
           ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
 
       - name: CMake Build
-        run: cmake --build --preset ${{ env.BUILD_PRESET }}
+        run: cmake --build --preset ${{ env.CMAKE_PRESET }}
 
       - name: Upload Single Header Artifact
         uses: actions/upload-artifact@v4
         with:
           name: byteweave-single-header-${{ matrix.cfg.os }}-${{ matrix.cfg.compiler }}
-          path: build/ci-header/byteweave-*.single.hpp
+          path: ${{ env.BUILD_DIR }}/byteweave-*.single.hpp
           if-no-files-found: error
 
       - name: Run Examples

@@ -26,6 +26,7 @@ if(MSVC AND CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   endforeach()
 endif()
 
+# TODO[@zmeadows][P1]: rename header-only to headers-only to avoid confusion with single-header
 # =============================================================================
 # Options (kept minimal)
 # =============================================================================
@@ -40,6 +41,27 @@ option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in buil
 option(BYTEWEAVE_WARNINGS "Enable common warning flags" ON)
 option(BYTEWEAVE_WARNINGS_STRICT "Enable extra-strict warnings (conversion, shadow, etc.)" OFF)
 option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
+
+# -----------------------------------------------------------------------------
+# Consumption mode for examples/tests
+# -----------------------------------------------------------------------------
+set(BYTEWEAVE_CONSUME_MODE
+    "library"
+    CACHE STRING "How tests/examples consume byteweave (library;header-only;single-header)")
+set_property(CACHE BYTEWEAVE_CONSUME_MODE PROPERTY STRINGS "library;header-only;single-header")
+
+option(BYTEWEAVE_SINGLE_HEADER_IN_ALL
+       "If ON, ensure the single-header is built as part of the 'all' target" OFF)
+
+# If user selects single-header consumption, force building the artifact and include in 'all'
+if(BYTEWEAVE_CONSUME_MODE STREQUAL "single-header")
+  set(BYTEWEAVE_BUILD_SINGLE_HEADER
+      ON
+      CACHE BOOL "Generate the amalgamated single-header target" FORCE)
+  set(BYTEWEAVE_SINGLE_HEADER_IN_ALL
+      ON
+      CACHE BOOL "Build single-header as part of 'all'" FORCE)
+endif()
 
 # If the user disables both library and single-header, there will be nothing to build.
 # We allow it (configure-only) but print a friendly warning.
@@ -278,7 +300,15 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
     COMMENT "Generating single-header amalgamation -> ${BYTEWEAVE_SINGLE_HEADER}"
     VERBATIM)
 
-  add_custom_target(single_header DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
+  # Project-scoped, idiomatic generator target name (and overridable variable)
+  set(BYTEWEAVE_SINGLE_HEADER_TARGET
+      "byteweave_single_header"
+      CACHE STRING "Custom target name for generating the Byteweave single-header")
+  add_custom_target(${BYTEWEAVE_SINGLE_HEADER_TARGET} DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
+  if(BYTEWEAVE_SINGLE_HEADER_IN_ALL)
+    add_custom_target(${BYTEWEAVE_SINGLE_HEADER_TARGET}_in_all ALL
+                      DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
+  endif()
 endif()
 
 # =============================================================================
