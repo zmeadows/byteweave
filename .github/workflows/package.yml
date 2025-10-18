@@ -1,6 +1,7 @@
 ---
 name: package
 
+# TODO[@zmeadows][P0]: make this depend on success of all other workflows?
 on:
   workflow_dispatch:
   push:
@@ -11,41 +12,41 @@ permissions:
   # required if we publish a GitHub Release
   contents: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   package:
     name: package (install + cpack + verify)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Setup CMake (if needed)
-        uses: ./.github/actions/setup-cmake-if-needed
-      - name: Setup Ninja
-        uses: ./.github/actions/setup-ninja
-      - name: Setup Python (if needed)
-        uses: ./.github/actions/setup-python-if-needed
+      - name: Set Up Build Environment
+        uses: ./.github/actions/setup-build
+        with:
+          use-sccache: "false"
 
-      - name: Configure (preset)
+      - name: CMake Configure
         run: cmake --preset ci-package
 
-      - name: Build single header
-        run: cmake --build --preset ci-package --target single_header --parallel
+      - name: CMake Build (Single Header)
+        run: cmake --build --preset ci-package --parallel
 
-      - name: Pre-install Check
-        shell: bash
+      - name: Pre-Install Build Output Check
         run: |
           set -Eeuo pipefail
           echo "::group::Pre-install single headers"
           find build/ci-package -type f -name 'byteweave-*.single.hpp' -print
           echo "::endgroup::"
 
-      - name: Install to staging prefix
+      - name: Install To Staging Prefix
         run: cmake --install build/ci-package --prefix build/_staging
 
-      - name: Sanity checks (installed tree)
-        shell: bash
+      - name: Sanity Check Installed Tree
         run: |
           set -Eeuo pipefail
           shopt -s nullglob
@@ -110,8 +111,7 @@ jobs:
 
           echo "OK: $SH"
 
-      - name: Consumer compile test (headers target)
-        shell: bash
+      - name: Consumer Compile Test (byteweave::headers)
         run: |
           set -euo pipefail
           mkdir -p ci-consume-multi && cd ci-consume-multi
@@ -131,8 +131,7 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/_staging"
           cmake --build build
 
-      - name: Consumer compile test (single target)
-        shell: bash
+      - name: Consumer Compile Test (byteweave::single)
         run: |
           set -euo pipefail
           mkdir -p ci-consume-single && cd ci-consume-single
@@ -152,12 +151,12 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/_staging"
           cmake --build build
 
-      - name: Package (CPack)
+      - name: CPack
         run: |
           cpack --config build/ci-package/CPackConfig.cmake -B artifacts/
           ls -la artifacts/
 
-      - name: Upload package artifacts
+      - name: Upload Package Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: byteweave-packages
@@ -169,13 +168,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Check tag is on main
+      - name: Check Tag On Main
         id: maincheck
-        shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
@@ -185,7 +183,7 @@ jobs:
             echo "is_main_tag=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download artifacts
+      - name: Download Artifacts
         if: steps.maincheck.outputs.is_main_tag == 'true'
         uses: actions/download-artifact@v4
         with:

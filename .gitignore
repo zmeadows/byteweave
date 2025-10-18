@@ -1,21 +1,72 @@
-# Build outputs
+# -----------------------------------------------------------------------------
+# CMake & build artifacts (out-of-source and accidental in-source)
+# -----------------------------------------------------------------------------
 /build/
 /dist/
 CMakeFiles/
 CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
 *.dir/
+compile_commands.json
+
+# Ninja/Xcode/Make generator files (in case of in-source config)
+*.ninja
+.ninja_log
+.ninja_deps
+*.xcodeproj/
+
+# Visual Studio generator files
 *.sln
 *.vcxproj*
 *.user
-compile_commands.json
+.vs/
 
-# Python
+# Common binary byproducts (guard against accidental in-source builds)
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+*.exp
+*.ilk
+*.pdb
+
+# -----------------------------------------------------------------------------
+# Packaging / artifacts (CPack & manual staging)
+# -----------------------------------------------------------------------------
+/artifacts/
+/_CPack_Packages/
+/_staging/        # if someone installs to repo root (normally we use build/_staging)
+
+# -----------------------------------------------------------------------------
+# Tooling caches (clangd/tidy, generic)
+# -----------------------------------------------------------------------------
+/.cache/
+.clangd/
+.clang-tidy-cache/
+
+# -----------------------------------------------------------------------------
+# Python (tools/, scripts)
+# -----------------------------------------------------------------------------
 __pycache__/
 *.pyc
 .venv/
+.venv*/
+venv/
+.env
 
-# OS
+# -----------------------------------------------------------------------------
+# Editors & OS junk
+# -----------------------------------------------------------------------------
 .DS_Store
+.idea/
+.vscode/
 
-.cache/
+# -----------------------------------------------------------------------------
+# Local user presets (never commit)
+# -----------------------------------------------------------------------------
 CMakeUserPresets.json

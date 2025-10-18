@@ -1,5 +1,10 @@
-#include <byteweave/byteweave.hpp>
 #include <cstdio>
+
+#if defined(BYTEWEAVE_USE_SINGLE_HEADER)
+#  include BYTEWEAVE_SINGLE_HEADER
+#else
+#  include <byteweave/byteweave.hpp>
+#endif
 
 using byteweave::status;
 

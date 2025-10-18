@@ -1,0 +1,259 @@
+---
+name: CI
+
+# TODO[@zmeadows][P1]: header-only job
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &build_paths
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "cmake/**"
+      - "include/**"
+      - "src/**"
+      - "examples/**"
+      - "tests/**"
+      - "tools/amalgamate.py"
+      - ".github/workflows/build.yml"
+  pull_request:
+    branches: [main]
+    paths: *build_paths
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  lib:
+    name: "lib ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}${{ matrix.cfg.stdlib == 'libc++' && ' · libc++' || '' }}"
+    runs-on: ${{ matrix.cfg.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          # prettier-ignore
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false, stdlib: "libc++"    }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true,  lto: true,  stdlib: "libstdc++" }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true,  lto: false, stdlib: "libstdc++" }
+          # prettier-ignore-end
+
+    env:
+      CMAKE_PRESET: ${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+      BUILD_DIR: build/${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+
+    steps:
+      - name: Show Matrix
+        run: echo '${{ toJson(matrix) }}'
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set Up Build Environment
+        uses: ./.github/actions/setup-build
+
+      - name: Export CC/CXX (POSIX)
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          echo "CC=${{ matrix.cfg.cc }}"  >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.cfg.cxx }}" >> "$GITHUB_ENV"
+
+      - name: Configure ASAN/UBSAN Environment
+        if: ${{ matrix.cfg.san }}
+        shell: bash
+        run: |
+          sym=$(command -v llvm-symbolizer || true)
+          if [ -n "$sym" ]; then
+            echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
+          fi
+
+          echo 'ASAN_OPTIONS=detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1' >> "$GITHUB_ENV"
+          echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
+
+      - name: Install libc++ Toolchain
+        if: ${{ matrix.cfg.stdlib == 'libc++' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc++-dev libc++abi-dev
+
+      - name: CMake Configure
+        run: >
+          cmake --preset ${{ env.CMAKE_PRESET }}
+          ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
+          ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
+          ${{ matrix.cfg.lto && '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON' || '' }}
+          ${{ matrix.cfg.stdlib == 'libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++' || '' }}
+
+      - name: CMake Build
+        run: cmake --build --preset ${{ env.CMAKE_PRESET }}
+
+      - name: Run Examples
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure --no-tests=error
+
+      - name: Run Tests
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure --no-tests=error
+
+      - name: sccache stats
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
+
+  single-header:
+    name: "single-header ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }}⟩${{ matrix.cfg.san && ' · san' || '' }}"
+    runs-on: ${{ matrix.cfg.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          # prettier-ignore
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  werror: true  }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, werror: false }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, werror: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, werror: false }
+          # prettier-ignore-end
+
+    env:
+      CMAKE_PRESET: ci-single-header
+      BUILD_DIR: build/ci-single-header
+
+    steps:
+      - name: Show Matrix
+        run: echo '${{ toJson(matrix) }}'
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set Up Build Environment
+        uses: ./.github/actions/setup-build
+
+      - name: Export CC/CXX (POSIX)
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          echo "CC=${{ matrix.cfg.cc }}"  >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.cfg.cxx }}" >> "$GITHUB_ENV"
+
+      - name: Configure ASAN/UBSAN Environment
+        if: ${{ matrix.cfg.san }}
+        shell: bash
+        run: |
+          sym=$(command -v llvm-symbolizer || true)
+          if [ -n "$sym" ]; then
+            echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
+          fi
+
+          echo 'ASAN_OPTIONS=detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1' >> "$GITHUB_ENV"
+          echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
+
+      - name: CMake Configure
+        run: >
+          cmake --preset ${{ env.CMAKE_PRESET }}
+          ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
+          ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
+
+      - name: CMake Build
+        run: cmake --build --preset ${{ env.CMAKE_PRESET }}
+
+      - name: Upload Single Header Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: byteweave-single-header-${{ matrix.cfg.os }}-${{ matrix.cfg.compiler }}
+          path: ${{ env.BUILD_DIR }}/byteweave-*.single.hpp
+          if-no-files-found: error
+
+      - name: Run Examples
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure --no-tests=error
+
+      - name: Run Tests
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure --no-tests=error
+
+      - name: sccache stats
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
+
+      - name: Check single header self-containment (portable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEADER="$(ls "${{ env.BUILD_DIR }}"/byteweave-*.single.hpp | head -n 1)"
+          echo "Header: $HEADER"
+          python3 - "$HEADER" <<'PY'
+          import re, sys, pathlib
+          hdr = pathlib.Path(sys.argv[1])
+          txt = hdr.read_text(encoding="utf-8", errors="ignore")
+          ok = True
+          # 1) no local quote includes inside the single header
+          if re.search(r'^\s*#\s*include\s*"', txt, re.M):
+              print("::error:: Single header must not contain local quote includes")
+              ok = False
+          # 2) no includes of byteweave/* inside the single header
+          if re.search(r'#\s*include\s*["<]byteweave/', txt):
+              print("::error:: Single header must not include byteweave/* headers")
+              ok = False
+          # 3) exactly one pragma once
+          if len(re.findall(r'^\s*#\s*pragma\s+once', txt, re.M)) != 1:
+              print("::error:: Expected exactly one '#pragma once'")
+              ok = False
+          # 4) macro uniqueness
+          macros = [
+            "BW_API","BYTEWEAVE_AMALGAMATED","BYTEWEAVE_HEADER_ONLY",
+            "BYTEWEAVE_URLSAFE_DEFAULT","BYTEWEAVE_STRICT_DECODING",
+            "BYTEWEAVE_VERSION_MAJOR","BYTEWEAVE_VERSION_MINOR",
+            "BYTEWEAVE_VERSION_PATCH","BYTEWEAVE_VERSION_STRING"
+          ]
+          for m in macros:
+              if len(re.findall(rf'^\s*#\s*define\s+{m}\b', txt, re.M)) > 1:
+                  print(f"::error:: Macro '{m}' defined more than once")
+                  ok = False
+          # 5) friendly warnings
+          if not re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', txt):
+              print("::warning:: No ISO8601Z timestamp found in header banner")
+          b = hdr.read_bytes()
+          if len(b) >= 3 and b[:3] == b'\xef\xbb\xbf':
+              print("::warning:: Header has a UTF-8 BOM")
+          if b and b[-1] != 0x0A:
+              print("::warning:: Header does not end with a newline")
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: ODR probe (single header, portable, no search in include)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p odr-probe
+          # Pick the generated header (versioned) from the build dir
+          HDR_SRC=("${{ env.BUILD_DIR }}"/byteweave-*.single.hpp)
+          if [ ${#HDR_SRC[@]} -eq 0 ]; then
+            echo "::error:: single header not found in ${{ env.BUILD_DIR }}" ; exit 1
+          fi
+          # Copy to a stable name next to the probe sources
+          cp -f "${HDR_SRC[0]}" odr-probe/byteweave.single.hpp
+          echo "Using header: odr-probe/byteweave.single.hpp"
+
+          # Minimal CMake project
+          cat > odr-probe/CMakeLists.txt <<'CM'
+          cmake_minimum_required(VERSION 3.20)
+          project(odr_probe CXX)
+          add_executable(odr_test a.cpp b.cpp)
+          target_compile_features(odr_test PRIVATE cxx_std_20)
+          CM
+
+          # Two TUs, both including the same single header (ODR link check)
+          cat > odr-probe/a.cpp <<'CPP'
+          #include "byteweave.single.hpp"
+          int main(){ return 0; }
+          CPP
+          cat > odr-probe/b.cpp <<'CPP'
+          #include "byteweave.single.hpp"
+          int f(){ return 42; }
+          CPP
+
+          cmake -S odr-probe -B odr-probe/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build odr-probe/build --target odr_test

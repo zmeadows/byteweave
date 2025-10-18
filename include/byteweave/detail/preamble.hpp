@@ -6,9 +6,9 @@
 #include <byteweave/types.hpp>
 
 // Common std headers used across inls
-#include <cstddef>     // IWYU pragma: keep
-#include <cstring>     // IWYU pragma: keep
-#include <span>        // IWYU pragma: keep
+#include <cstddef> // IWYU pragma: keep
+#include <cstring> // IWYU pragma: keep
+#include <span> // IWYU pragma: keep
 #include <string_view> // IWYU pragma: keep
 
 #ifndef BW_DEF

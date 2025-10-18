@@ -1,24 +1,67 @@
 cmake_minimum_required(VERSION 3.20)
 
+# =============================================================================
+# Project
+# =============================================================================
 project(
   byteweave
   LANGUAGES CXX
   VERSION 0.1.0)
 
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ----------------------------------------------------------------------------
+# TODO[@zmeadows][P1]: factor this out into stand-alone msvc prelude .cmake file
+if(MSVC AND CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+  # Hard-kill any /Zi or /ZI someone added (toolchain, env, presets, etc.)
+  foreach(lang C CXX)
+    foreach(cfg DEBUG RELWITHDEBINFO)
+      string(REGEX REPLACE "([/ ]Z[Ii])" "" CMAKE_${lang}_FLAGS_${cfg}
+                           "${CMAKE_${lang}_FLAGS_${cfg}}")
+      set(CMAKE_${lang}_FLAGS_${cfg} "${CMAKE_${lang}_FLAGS_${cfg}} /Z7")
+    endforeach()
+  endforeach()
+endif()
+
+# TODO[@zmeadows][P1]: rename header-only to headers-only to avoid confusion with single-header
+# =============================================================================
 # Options (kept minimal)
-# ----------------------------------------------------------------------------
+# =============================================================================
+option(BYTEWEAVE_BUILD_EXAMPLES "Build example programs (whichever artifacts exist)" OFF)
 option(BYTEWEAVE_BUILD_LIBRARY "Build the byteweave library target" ON)
 option(BYTEWEAVE_BUILD_SHARED "If building the library, build it as SHARED instead of STATIC" OFF)
 option(BYTEWEAVE_BUILD_SINGLE_HEADER "Generate the amalgamated single-header target" ON)
-option(BYTEWEAVE_BUILD_EXAMPLES "Build example programs (whichever artifacts exist)" OFF)
+option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" OFF)
+option(BYTEWEAVE_COPY_COMPILE_COMMANDS "Copy compile_commands.json to project root" OFF)
+option(BYTEWEAVE_ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
+option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in build dir" ON)
 option(BYTEWEAVE_WARNINGS "Enable common warning flags" ON)
-option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
 option(BYTEWEAVE_WARNINGS_STRICT "Enable extra-strict warnings (conversion, shadow, etc.)" OFF)
+option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
+
+# -----------------------------------------------------------------------------
+# Consumption mode for examples/tests
+# -----------------------------------------------------------------------------
+set(BYTEWEAVE_CONSUME_MODE
+    "library"
+    CACHE STRING "How tests/examples consume byteweave (library;header-only;single-header)")
+set_property(CACHE BYTEWEAVE_CONSUME_MODE PROPERTY STRINGS "library;header-only;single-header")
+
+option(BYTEWEAVE_SINGLE_HEADER_IN_ALL
+       "If ON, ensure the single-header is built as part of the 'all' target" OFF)
+
+# If user selects single-header consumption, force building the artifact and include in 'all'
+if(BYTEWEAVE_CONSUME_MODE STREQUAL "single-header")
+  set(BYTEWEAVE_BUILD_SINGLE_HEADER
+      ON
+      CACHE BOOL "Generate the amalgamated single-header target" FORCE)
+  set(BYTEWEAVE_SINGLE_HEADER_IN_ALL
+      ON
+      CACHE BOOL "Build single-header as part of 'all'" FORCE)
+endif()
 
 # If the user disables both library and single-header, there will be nothing to build.
 # We allow it (configure-only) but print a friendly warning.
@@ -29,10 +72,9 @@ if(NOT BYTEWEAVE_BUILD_LIBRARY AND NOT BYTEWEAVE_BUILD_SINGLE_HEADER)
   )
 endif()
 
-# ----------------------------------------------------------------------------
-# Python
-# ----------------------------------------------------------------------------
-
+# =============================================================================
+# Python (for tools)
+# =============================================================================
 find_package(
   Python3
   COMPONENTS Interpreter
@@ -63,12 +105,9 @@ else()
   message(STATUS "Enable CMAKE_EXPORT_COMPILE_COMMANDS=ON to use 'tidy' target")
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Compile Commands toggles
-# ----------------------------------------------------------------------------
-option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in build dir" ON)
-option(BYTEWEAVE_COPY_COMPILE_COMMANDS "Copy compile_commands.json to project root" OFF)
-
+# =============================================================================
 if(BYTEWEAVE_EXPORT_COMPILE_COMMANDS)
   set(CMAKE_EXPORT_COMPILE_COMMANDS
       ON
@@ -90,9 +129,9 @@ if(BYTEWEAVE_COPY_COMPILE_COMMANDS)
     VERBATIM)
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Generated headers (version/config)
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Ensure the configured output directory exists across generators/CMake versions.
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated/byteweave)
 
@@ -101,9 +140,58 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/version.hpp.in
 
 set(BYTEWEAVE_GEN_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/generated/byteweave/version.hpp)
 
-# ----------------------------------------------------------------------------
+# =============================================================================
+# Sanitizers interface (available even without the library)
+# =============================================================================
+if(BYTEWEAVE_ENABLE_SANITIZERS)
+  if(MSVC)
+    message(WARNING "BYTEWEAVE_ENABLE_SANITIZERS not supported with MSVC toolset currently.")
+  else()
+    # Make an interface that carries sanitizer flags. Consumers can opt-in by linking it.
+    add_library(byteweave_san INTERFACE)
+
+    target_compile_options(
+      byteweave_san INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer
+                              -fno-sanitize-recover=undefined)
+    target_link_options(
+      byteweave_san
+      INTERFACE
+      -fsanitize=address,undefined
+      -fno-omit-frame-pointer
+      -fno-sanitize-recover=undefined)
+
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-fsanitize=leak" BW_HAS_LSAN)
+    if(BW_HAS_LSAN)
+      target_compile_options(byteweave_san INTERFACE -fsanitize=leak)
+      target_link_options(byteweave_san INTERFACE -fsanitize=leak)
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      target_compile_definitions(byteweave_san INTERFACE _GLIBCXX_ASSERTIONS=1)
+    endif()
+
+    # If we are in header-only mode (no library to propagate flags), apply sanitizer flags
+    # at directory scope so tests/examples created in subdirs get them automatically.
+    if(NOT BYTEWEAVE_BUILD_LIBRARY)
+      add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                          -fno-sanitize-recover=undefined)
+      add_link_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                       -fno-sanitize-recover=undefined)
+      if(BW_HAS_LSAN)
+        add_compile_options(-fsanitize=leak)
+        add_link_options(-fsanitize=leak)
+      endif()
+      if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_definitions(-D_GLIBCXX_ASSERTIONS=1)
+      endif()
+    endif()
+  endif()
+endif()
+
+# =============================================================================
 # Library target (optional)
-# ----------------------------------------------------------------------------
+# =============================================================================
 if(BYTEWEAVE_BUILD_LIBRARY)
   set(_lib_type STATIC)
   if(BYTEWEAVE_BUILD_SHARED)
@@ -133,14 +221,13 @@ if(BYTEWEAVE_BUILD_LIBRARY)
         # Promote a few common diagnostics to level-4 warnings; keep it reasonable.
         target_compile_options(
           byteweave
-          PRIVATE
-            /permissive- # Stricter conformance mode
-            /Zc:__cplusplus # Correct __cplusplus
-            /w14242 # 'identifier': conversion, possible loss of data
-            /w14254 # 'operator': conversion from 'type1' to 'type2', possible loss of data
-            /w14263 # 'function': member function does not override any base class virtual member function
-            /w14265 # class has virtual functions, but destructor is not virtual
-            /w14287 # unsigned/negative mismatch
+          PRIVATE /permissive- # Stricter conformance mode
+                  /Zc:__cplusplus # Correct __cplusplus
+                  /w14242 # conversion, possible loss of data
+                  /w14254 # operator conversion, possible loss of data
+                  /w14263 # member function does not override base class virtual
+                  /w14265 # class has virtual funcs, but dtor not virtual
+                  /w14287 # unsigned/negative mismatch
         )
       endif()
     else()
@@ -160,6 +247,11 @@ if(BYTEWEAVE_BUILD_LIBRARY)
     endif()
   endif()
 
+  # If sanitizer interface exists, propagate it to consumers via the library.
+  if(TARGET byteweave_san)
+    target_link_libraries(byteweave PUBLIC byteweave_san)
+  endif()
+
   if(BYTEWEAVE_BUILD_SHARED)
     # Ensure correct dllexport when building the DLL on Windows.
     target_compile_definitions(byteweave PRIVATE BW_BUILDING_DLL=1)
@@ -175,9 +267,9 @@ if(BYTEWEAVE_BUILD_LIBRARY)
   set_target_properties(byteweave PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Single-header generation (optional; independent of library)
-# ----------------------------------------------------------------------------
+# =============================================================================
 if(BYTEWEAVE_BUILD_SINGLE_HEADER)
   # Allow overriding where the single header is written (defaults to the build dir).
   set(BYTEWEAVE_SINGLE_HEADER_OUTDIR
@@ -187,9 +279,12 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
   # Gather headers as dependencies so the amalgamated file rebuilds when they change.
   # GLOB is fine here because we only use it for dependencies; CONFIGURE_DEPENDS
   # makes CMake re-run if headers are added/removed.
-  file(GLOB_RECURSE BYTEWEAVE_PUBLIC_HEADERS CONFIGURE_DEPENDS
-       "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/*.hpp"
-       "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/detail/*.inl")
+  file(
+    GLOB_RECURSE
+    BYTEWEAVE_PUBLIC_HEADERS
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/detail/*.inl")
 
   set(BYTEWEAVE_SINGLE_HEADER
       "${BYTEWEAVE_SINGLE_HEADER_OUTDIR}/byteweave-${PROJECT_VERSION}.single.hpp")
@@ -205,51 +300,36 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
     COMMENT "Generating single-header amalgamation -> ${BYTEWEAVE_SINGLE_HEADER}"
     VERBATIM)
 
-  add_custom_target(single_header DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
-endif()
-
-# ----------------------------------------------------------------------------
-# Examples (optional; will build the ones that are possible)
-# ----------------------------------------------------------------------------
-if(BYTEWEAVE_BUILD_EXAMPLES)
-  set(_examples_built FALSE)
-
-  if(TARGET byteweave)
-    add_executable(example_lib examples/minimal.cpp)
-    target_link_libraries(example_lib PRIVATE byteweave)
-    set(_examples_built TRUE)
-  endif()
-
-  if(TARGET single_header)
-    add_executable(example_single examples/minimal.cpp)
-    add_dependencies(example_single single_header)
-    target_compile_definitions(
-      example_single PRIVATE BYTEWEAVE_USE_SINGLE_HEADER=1
-                             BYTEWEAVE_SINGLE_HEADER="${BYTEWEAVE_SINGLE_HEADER}")
-    set(_examples_built TRUE)
-  endif()
-
-  if(NOT _examples_built)
-    message(
-      FATAL_ERROR
-        "BYTEWEAVE_BUILD_EXAMPLES=ON, but neither the library nor single-header is enabled. Enable BYTEWEAVE_BUILD_LIBRARY or BYTEWEAVE_BUILD_SINGLE_HEADER."
-    )
+  # Project-scoped, idiomatic generator target name (and overridable variable)
+  set(BYTEWEAVE_SINGLE_HEADER_TARGET
+      "byteweave_single_header"
+      CACHE STRING "Custom target name for generating the Byteweave single-header")
+  add_custom_target(${BYTEWEAVE_SINGLE_HEADER_TARGET} DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
+  if(BYTEWEAVE_SINGLE_HEADER_IN_ALL)
+    add_custom_target(${BYTEWEAVE_SINGLE_HEADER_TARGET}_in_all ALL
+                      DEPENDS ${BYTEWEAVE_SINGLE_HEADER})
   endif()
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Tests (optional)
-# ----------------------------------------------------------------------------
-option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" ON)
-
+# =============================================================================
 if(BYTEWEAVE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
+# Examples
+# =============================================================================
+if(BYTEWEAVE_BUILD_EXAMPLES)
+  enable_testing()
+  add_subdirectory(examples)
+endif()
+
+# =============================================================================
 # Install rules (headers-only + single-header) and CMake package config
-# ----------------------------------------------------------------------------
+# =============================================================================
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -265,8 +345,10 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/byteweave/version.hpp"
 if(BYTEWEAVE_BUILD_SINGLE_HEADER)
   install(FILES "${BYTEWEAVE_SINGLE_HEADER}" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
 endif()
+
 # Package config: byteweaveConfig.cmake and version file
 set(_BW_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/byteweave")
+
 write_basic_package_version_file(
   "${PROJECT_BINARY_DIR}/byteweaveConfigVersion.cmake"
   VERSION "${PROJECT_VERSION}"
@@ -284,7 +366,7 @@ configure_package_config_file(
 
 install(FILES "${PROJECT_BINARY_DIR}/byteweaveConfig.cmake"
               "${PROJECT_BINARY_DIR}/byteweaveConfigVersion.cmake" DESTINATION "${_BW_CMAKE_DIR}")
-# Optionally include license/readme if present
+
 if(EXISTS "${PROJECT_SOURCE_DIR}/LICENSE")
   install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
 endif()
@@ -292,19 +374,19 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/README.md")
   install(FILES "${PROJECT_SOURCE_DIR}/README.md" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
 endif()
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # CPack (archives from install rules)
-# ----------------------------------------------------------------------------
+# =============================================================================
 set(CPACK_PACKAGE_NAME "byteweave")
 set(CPACK_PACKAGE_VENDOR "Byteweave")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_CONTACT "maintainers@byteweave.invalid")
+set(CPACK_PACKAGE_CONTACT "zmeadows@gmail.com")
 set(CPACK_GENERATOR "TGZ;ZIP")
 include(CPack)
 
-# ----------------------------------------------------------------------------
+# =============================================================================
 # Friendly status summary
-# ----------------------------------------------------------------------------
+# =============================================================================
 message(STATUS "Byteweave configuration:")
 message(STATUS "  BYTEWEAVE_BUILD_LIBRARY        = ${BYTEWEAVE_BUILD_LIBRARY}")
 message(STATUS "  BYTEWEAVE_BUILD_SHARED         = ${BYTEWEAVE_BUILD_SHARED}")
@@ -314,3 +396,17 @@ message(STATUS "  BYTEWEAVE_BUILD_EXAMPLES       = ${BYTEWEAVE_BUILD_EXAMPLES}")
 message(STATUS "  BYTEWEAVE_WARNINGS             = ${BYTEWEAVE_WARNINGS}")
 message(STATUS "  BYTEWEAVE_WERROR               = ${BYTEWEAVE_WERROR}")
 message(STATUS "  BYTEWEAVE_WARNINGS_STRICT      = ${BYTEWEAVE_WARNINGS_STRICT}")
+message(STATUS "  BYTEWEAVE_ENABLE_SANITIZERS    = ${BYTEWEAVE_ENABLE_SANITIZERS}")
+
+# =============================================================================
+# Future Ideas
+# =============================================================================
+# # Prefer static MSVC runtime for static libs (CMake 3.15+)
+# # set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+#
+# # IPO/LTO (CMake 3.9+; toolchain permitting)
+# # include(CheckIPOSupported)
+# # check_ipo_supported(RESULT _ipo_supported)
+# # if(_ipo_supported)
+# #   set_property(TARGET byteweave PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+# # endif()

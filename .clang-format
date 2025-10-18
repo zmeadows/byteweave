@@ -1,10 +1,27 @@
 ---
+# =============================================================================
+# Byteweave C++ formatting
+# - Keep it simple and stable across Linux/macOS/Windows and CF versions.
+# - Amalgamation-safe: never reorder includes or perturb IWYU trailing comments.
+# =============================================================================
+
 BasedOnStyle: LLVM
 Language: Cpp
 
-# --- Line length & indentation ---
+# -----------------------------------------------------------------------------
+# 1) Project invariants (amalgamation / IWYU safety)
+# -----------------------------------------------------------------------------
+SortIncludes: false # Do NOT reorder includes; single-header depends on order
+IncludeBlocks: Preserve # Keep grouping exactly as written (no merging/splitting)
+AlignTrailingComments: false # Avoid shifting `// IWYU pragma: keep` or end-of-line notes
+SortUsingDeclarations: false # Keep local `using ...` in author-chosen order
+
+# -----------------------------------------------------------------------------
+# 2) Line length & indentation
+# -----------------------------------------------------------------------------
 ColumnLimit: 100
 IndentWidth: 2
+ContinuationIndentWidth: 2
 TabWidth: 2
 UseTab: Never
 IndentCaseLabels: true
@@ -13,13 +30,13 @@ NamespaceIndentation: None
 FixNamespaceComments: true
 CompactNamespaces: false
 
+# Preprocessor: readable but minimal indentation
 IndentPPDirectives: AfterHash
+PPIndentWidth: 2
 
-# --- Includes ---
-SortIncludes: false # Don't reorder; safer for amalgamation
-IncludeBlocks: Preserve # Keep grouping as written
-
-# --- Spacing & wrapping ---
+# -----------------------------------------------------------------------------
+# 3) Spacing & wrapping
+# -----------------------------------------------------------------------------
 BreakBeforeBraces: Stroustrup
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: Never
@@ -28,21 +45,29 @@ SpaceBeforeCtorInitializerColon: true
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 2
 
-# --- Alignment (tasteful, not overbearing) ---
+# -----------------------------------------------------------------------------
+# 4) Alignment (tasteful, not overbearing)
+# -----------------------------------------------------------------------------
 AlignAfterOpenBracket: Align
 AlignOperands: Align
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: Consecutive
 
-# --- Short forms / bin packing ---
+# -----------------------------------------------------------------------------
+# 5) Short forms / bin packing
+# -----------------------------------------------------------------------------
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowShortIfStatementsOnASingleLine: Never
 BinPackArguments: false
 BinPackParameters: false
 
-# --- Pointers/refs ---
+# -----------------------------------------------------------------------------
+# 6) Pointers / references
+# -----------------------------------------------------------------------------
 DerivePointerAlignment: false
 PointerAlignment: Left
 
-# --- Comments ---
+# -----------------------------------------------------------------------------
+# 7) Comments
+# -----------------------------------------------------------------------------
 ReflowComments: true

@@ -3,7 +3,6 @@
 #include <byteweave/types.hpp>
 #include <byteweave/config.hpp>
 #include <span>
-#include <string_view>
 
 namespace byteweave::base64 {
 

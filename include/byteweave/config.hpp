@@ -1,5 +1,6 @@
 // Build-time feature toggles (defaults); may be overridden via compiler -D flags.
 // In single-header builds the preamble sets BYTEWEAVE_AMALGAMATED=1 before inlining.
+// NOTE: Prefer numeric checks: `#if BYTEWEAVE_HEADER_ONLY` (not `#ifdef BYTEWEAVE_HEADER_ONLY`).
 #pragma once
 
 #ifndef BYTEWEAVE_HEADER_ONLY
