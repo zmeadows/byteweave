@@ -117,6 +117,54 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/byteweave/version.hpp.in
 set(BYTEWEAVE_GEN_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/generated/byteweave/version.hpp)
 
 # =============================================================================
+# Sanitizers interface (available even without the library)
+# =============================================================================
+if(BYTEWEAVE_ENABLE_SANITIZERS)
+  if(MSVC)
+    message(WARNING "BYTEWEAVE_ENABLE_SANITIZERS not supported with MSVC toolset currently.")
+  else()
+    # Make an interface that carries sanitizer flags. Consumers can opt-in by linking it.
+    add_library(byteweave_san INTERFACE)
+
+    target_compile_options(byteweave_san INTERFACE
+      -fsanitize=address,undefined
+      -fno-omit-frame-pointer
+      -fno-sanitize-recover=undefined
+    )
+    target_link_options(byteweave_san INTERFACE
+      -fsanitize=address,undefined
+      -fno-omit-frame-pointer
+      -fno-sanitize-recover=undefined
+    )
+
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-fsanitize=leak" BW_HAS_LSAN)
+    if(BW_HAS_LSAN)
+      target_compile_options(byteweave_san INTERFACE -fsanitize=leak)
+      target_link_options(byteweave_san INTERFACE    -fsanitize=leak)
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      target_compile_definitions(byteweave_san INTERFACE _GLIBCXX_ASSERTIONS=1)
+    endif()
+
+    # If we are in header-only mode (no library to propagate flags), apply sanitizer flags
+    # at directory scope so tests/examples created in subdirs get them automatically.
+    if(NOT BYTEWEAVE_BUILD_LIBRARY)
+      add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+      add_link_options(   -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+      if(BW_HAS_LSAN)
+        add_compile_options(-fsanitize=leak)
+        add_link_options(   -fsanitize=leak)
+      endif()
+      if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_definitions(-D_GLIBCXX_ASSERTIONS=1)
+      endif()
+    endif()
+  endif()
+endif()
+
+# =============================================================================
 # Library target (optional)
 # =============================================================================
 if(BYTEWEAVE_BUILD_LIBRARY)
@@ -174,19 +222,9 @@ if(BYTEWEAVE_BUILD_LIBRARY)
     endif()
   endif()
 
-  if(BYTEWEAVE_ENABLE_SANITIZERS)
-    if(MSVC)
-      message(WARNING "BYTEWEAVE_ENABLE_SANITIZERS doesn't support MSVC currently.")
-    else()
-      target_compile_options(byteweave PRIVATE -fsanitize=address,undefined
-                                               -fno-omit-frame-pointer-fno-sanitize-recover=all)
-      target_link_options(
-        byteweave
-        PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-        -fno-sanitize-recover=all)
-    endif()
+  # If sanitizer interface exists, propagate it to consumers via the library.
+  if(TARGET byteweave_san)
+    target_link_libraries(byteweave PUBLIC byteweave_san)
   endif()
 
   if(BYTEWEAVE_BUILD_SHARED)
@@ -325,6 +363,7 @@ message(STATUS "  BYTEWEAVE_BUILD_EXAMPLES       = ${BYTEWEAVE_BUILD_EXAMPLES}")
 message(STATUS "  BYTEWEAVE_WARNINGS             = ${BYTEWEAVE_WARNINGS}")
 message(STATUS "  BYTEWEAVE_WERROR               = ${BYTEWEAVE_WERROR}")
 message(STATUS "  BYTEWEAVE_WARNINGS_STRICT      = ${BYTEWEAVE_WARNINGS_STRICT}")
+message(STATUS "  BYTEWEAVE_ENABLE_SANITIZERS    = ${BYTEWEAVE_ENABLE_SANITIZERS}")
 
 # =============================================================================
 # Future Ideas

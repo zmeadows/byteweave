@@ -25,16 +25,17 @@ concurrency:
 
 jobs:
   build-lib:
+    # TODO[@zmeadows][P3]: add cfg.san to job name?
     name: build-lib (${{ matrix.cfg.os }}, ${{ matrix.cfg.compiler }}, shared=${{ matrix.shared }})
     runs-on: ${{ matrix.cfg.os }}
     strategy:
       fail-fast: false
       matrix:
         cfg:
-          - { os: ubuntu-latest, compiler: gcc, cc: gcc, cxx: g++ }
-          - { os: ubuntu-latest, compiler: clang, cc: clang, cxx: clang++ }
-          - { os: macos-latest, compiler: clang, cc: clang, cxx: clang++ }
-          - { os: windows-latest, compiler: msvc }
+          - { os: ubuntu-latest, compiler: gcc, cc: gcc, cxx: g++, san: false }
+          - { os: ubuntu-latest, compiler: clang, cc: clang, cxx: clang++, san: true }
+          - { os: macos-latest, compiler: clang, cc: clang, cxx: clang++, san: false }
+          - { os: windows-latest, compiler: msvc, san: false }
         shared: [true, false]
 
     env:
@@ -58,8 +59,20 @@ jobs:
           echo "CC=${{ matrix.cfg.cc }}"  >> "$GITHUB_ENV"
           echo "CXX=${{ matrix.cfg.cxx }}" >> "$GITHUB_ENV"
 
+      - name: Configure ASAN/UBSAN Environment
+        if: ${{ matrix.cfg.san }}
+        shell: bash
+        run: |
+          sym=$(command -v llvm-symbolizer || true)
+          if [ -n "$sym" ]; then
+            echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
+          fi
+
+          echo 'ASAN_OPTIONS=detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1' >> "$GITHUB_ENV"
+          echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
+
       - name: CMake Configure
-        run: cmake --preset ${{ env.BUILD_PRESET }}
+        run: cmake --preset ${{ env.BUILD_PRESET }} ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
 
       - name: CMake Build
         run: cmake --build --preset ${{ env.BUILD_PRESET }} --parallel
@@ -344,73 +357,3 @@ jobs:
 #      - name: sccache stats (final)
 #        if: always()
 #        uses: ./.github/actions/sccache-stats
-#
-#  build-sanitizers:
-#    name: sanitizers (ubuntu clang asan+ubsan)
-#    runs-on: ubuntu-24.04
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#
-#      - name: Setup Ninja
-#        uses: ./.github/actions/setup-ninja
-#        with:
-#          version: ${{ env.NINJA_VERSION }}
-#
-#      - name: Setup Python (if needed)
-#        id: setup_python
-#        uses: ./.github/actions/setup-python-if-needed
-#        with:
-#          min_version: "3.10"
-#          setup_version: "3.11"
-#
-#      - name: Setup CMake (if needed)
-#        id: setup_cmake
-#        uses: ./.github/actions/setup-cmake-if-needed
-#        with:
-#          min_version: "3.20.0"
-#          cmake_version: "3.29.*"
-#          python_bin: ${{ steps.setup_python.outputs.python_bin }}
-#
-#      - name: Restore sccache object cache
-#        uses: actions/cache@v4
-#        with:
-#          path: ${{ env.SCCACHE_DIR }}
-#          key: ${{ runner.os }}-sanitizers-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'include/**', 'src/**', 'tools/amalgamate.py') }}
-#          restore-keys: |
-#            ${{ runner.os }}-sanitizers-
-#
-#      - name: Setup sccache
-#        uses: ./.github/actions/setup-sccache
-#        with:
-#          version: ${{ env.SCCACHE_VERSION }}
-#
-#      - name: Configure preset ci-sanitizers
-#        shell: bash
-#        run: cmake --preset ci-sanitizers
-#        env:
-#          CC: clang
-#          CXX: clang++
-#
-#      - name: Build preset ci-sanitizers
-#        shell: bash
-#        run: cmake --build --preset ci-sanitizers --parallel
-#
-#      - name: Run example_lib with sanitizers
-#        shell: bash
-#        env:
-#          ASAN_OPTIONS: detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1
-#          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-#        run: |
-#          set -euo pipefail
-#          exe="build/ci-sanitizers/example_lib"
-#          if [ ! -f "$exe" ]; then
-#            echo "example_lib not found at $exe" >&2
-#            exit 1
-#          fi
-#          "$exe"
-#
-#      - name: sccache stats (final)
-#        if: always()
-#        uses: ./.github/actions/sccache-stats
-#
