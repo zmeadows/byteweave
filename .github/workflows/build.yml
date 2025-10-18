@@ -1,9 +1,6 @@
 ---
 name: build
 
-# TODO[@zmeadows][P0]: use pwsh for all windows build/configure steps
-# TODO[@zmeadows][P0]: fix windows pipelines
-
 on:
   workflow_dispatch:
   push:
@@ -40,6 +37,10 @@ jobs:
           - { os: windows-latest, compiler: msvc }
         shared: [true, false]
 
+    env:
+      BUILD_PRESET: ${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+      BUILD_DIR: build/${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+
     steps:
       - name: Show Matrix
         run: echo '${{ toJson(matrix) }}'
@@ -58,41 +59,16 @@ jobs:
           echo "CXX=${{ matrix.cfg.cxx }}" >> "$GITHUB_ENV"
 
       - name: CMake Configure
-        run: cmake --preset ${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+        run: cmake --preset ${{ env.BUILD_PRESET }}
 
       - name: CMake Build
-        run: cmake --build --preset ${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }} --parallel
+        run: cmake --build --preset ${{ env.BUILD_PRESET }} --parallel
 
-      # TODO[@zmeadows][P1]: organize examples folder and GLOB
-      - name: Run example_lib (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        env:
-          BDIR: ${{ matrix.shared && 'build/ci-lib-shared' || 'build/ci-lib-static' }}
-        run: |
-          $exe = Join-Path $env:BDIR 'example_lib.exe'
-          if (-not (Test-Path $exe)) {
-            $found = Get-ChildItem -Path $env:BDIR -Recurse -File -Filter 'example_lib.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($null -eq $found) { Write-Error "example_lib.exe not found under $env:BDIR"; exit 1 }
-            $exe = $found.FullName
-          }
-          Write-Host "Running: $exe"
-          & $exe
+      - name: Run Examples
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure
 
-      - name: Run example_lib (POSIX)
-        if: ${{ runner.os != 'Windows' }}
-        shell: bash
-        env:
-          BDIR: ${{ matrix.shared && 'build/ci-lib-shared' || 'build/ci-lib-static' }}
-        run: |
-          set -euo pipefail
-          exe="$BDIR/example_lib"
-          if [[ ! -x "$exe" ]]; then
-            exe="$(find "$BDIR" -type f -name example_lib -perm -111 | head -n1 || true)"
-            [[ -n "${exe:-}" ]] || { echo "example_lib not found under $BDIR" >&2; exit 1; }
-          fi
-          echo "Running: $exe"
-          "$exe"
+      - name: Run Tests
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure
 
       - name: sccache stats
         shell: bash

@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# TODO[@zmeadows][P1]: factor this out into stand-alone msvc prelude .cmake file
 if(MSVC AND CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   # Hard-kill any /Zi or /ZI someone added (toolchain, env, presets, etc.)
   foreach(lang C CXX)
@@ -240,48 +241,19 @@ if(BYTEWEAVE_BUILD_SINGLE_HEADER)
 endif()
 
 # =============================================================================
-# Examples (optional; will build the ones that are possible)
-# =============================================================================
-if(BYTEWEAVE_BUILD_EXAMPLES)
-  set(_examples_built FALSE)
-
-  if(TARGET byteweave)
-    add_executable(example_lib examples/minimal.cpp)
-    target_link_libraries(example_lib PRIVATE byteweave)
-    set(_examples_built TRUE)
-
-    if(BYTEWEAVE_BUILD_SHARED)
-      set_target_properties(
-        example_lib
-        PROPERTIES SKIP_BUILD_RPATH OFF
-                   BUILD_RPATH_USE_ORIGIN ON
-                   INSTALL_RPATH_USE_LINK_PATH ON)
-    endif()
-  endif()
-
-  if(TARGET single_header)
-    add_executable(example_single examples/minimal.cpp)
-    add_dependencies(example_single single_header)
-    target_compile_definitions(
-      example_single PRIVATE BYTEWEAVE_USE_SINGLE_HEADER=1
-                             BYTEWEAVE_SINGLE_HEADER="${BYTEWEAVE_SINGLE_HEADER}")
-    set(_examples_built TRUE)
-  endif()
-
-  if(NOT _examples_built)
-    message(
-      FATAL_ERROR
-        "BYTEWEAVE_BUILD_EXAMPLES=ON, but neither the library nor single-header is enabled. Enable BYTEWEAVE_BUILD_LIBRARY or BYTEWEAVE_BUILD_SINGLE_HEADER."
-    )
-  endif()
-endif()
-
-# =============================================================================
 # Tests (optional)
 # =============================================================================
 if(BYTEWEAVE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+# =============================================================================
+# Examples
+# =============================================================================
+if(BYTEWEAVE_BUILD_EXAMPLES)
+  enable_testing()
+  add_subdirectory(examples)
 endif()
 
 # =============================================================================
@@ -324,7 +296,6 @@ configure_package_config_file(
 install(FILES "${PROJECT_BINARY_DIR}/byteweaveConfig.cmake"
               "${PROJECT_BINARY_DIR}/byteweaveConfigVersion.cmake" DESTINATION "${_BW_CMAKE_DIR}")
 
-# Optionally include license/readme if present
 if(EXISTS "${PROJECT_SOURCE_DIR}/LICENSE")
   install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "${CMAKE_INSTALL_DATADIR}/byteweave")
 endif()
@@ -338,7 +309,7 @@ endif()
 set(CPACK_PACKAGE_NAME "byteweave")
 set(CPACK_PACKAGE_VENDOR "Byteweave")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_CONTACT "maintainers@byteweave.invalid")
+set(CPACK_PACKAGE_CONTACT "zmeadows@gmail.com")
 set(CPACK_GENERATOR "TGZ;ZIP")
 include(CPack)
 
