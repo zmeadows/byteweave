@@ -25,21 +25,22 @@ concurrency:
 
 jobs:
   lib:
-    name: "lib ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}"
+    name: "lib ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}${{ matrix.cfg.stdlib == 'libc++' && ' · libc++' || '' }}"
     runs-on: ${{ matrix.cfg.os }}
     strategy:
       fail-fast: false
       matrix:
         cfg:
           # prettier-ignore
-          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false, lto: false }
-          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false, lto: false }
-          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false }
-          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true,  lto: true  }
-          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false, lto: false }
-          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false, lto: false }
-          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false, lto: false }
-          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true,  lto: false }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false, stdlib: "libc++"    }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true,  lto: true,  stdlib: "libstdc++" }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false, lto: false, stdlib: "libstdc++" }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true,  lto: false, stdlib: "libstdc++" }
           # prettier-ignore-end
 
     env:
@@ -75,12 +76,19 @@ jobs:
           echo 'ASAN_OPTIONS=detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1' >> "$GITHUB_ENV"
           echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
 
+      - name: Install libc++ Toolchain
+        if: ${{ matrix.cfg.stdlib == 'libc++' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc++-dev libc++abi-dev
+
       - name: CMake Configure
         run: >
           cmake --preset ${{ env.BUILD_PRESET }}
           ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
           ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
           ${{ matrix.cfg.lto && '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON' || '' }}
+          ${{ matrix.cfg.stdlib == 'libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++' || '' }}
 
       - name: CMake Build
         run: cmake --build --preset ${{ env.BUILD_PRESET }}
