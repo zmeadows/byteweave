@@ -33,14 +33,14 @@ jobs:
       matrix:
         cfg:
           # prettier-ignore
-          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false }
-          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false }
-          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false }
-          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true  }
-          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false }
-          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false }
-          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false }
-          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true  }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false, lto: false }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false, lto: false }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false, lto: false }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true,  lto: true  }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false, lto: false }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false, lto: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false, lto: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true,  lto: false }
           # prettier-ignore-end
 
     env:
@@ -81,6 +81,7 @@ jobs:
           cmake --preset ${{ env.BUILD_PRESET }}
           ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
           ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
+          ${{ matrix.cfg.lto && '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON' || '' }}
 
       - name: CMake Build
         run: cmake --build --preset ${{ env.BUILD_PRESET }}
