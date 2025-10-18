@@ -86,10 +86,10 @@ jobs:
         run: cmake --build --preset ${{ env.BUILD_PRESET }}
 
       - name: Run Examples
-        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure --no-tests=error
 
       - name: Run Tests
-        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure --no-tests=error
 
       - name: sccache stats
         shell: bash
@@ -103,10 +103,10 @@ jobs:
       matrix:
         cfg:
           # prettier-ignore
-          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  wrerror: true  }
-          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, wrerror: false }
-          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, wrerror: false }
-          - { os: windows-latest, compiler: msvc,                           san: false, wrerror: false }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  werror: true  }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, werror: false }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, werror: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, werror: false }
           # prettier-ignore-end
 
     env:
@@ -159,171 +159,74 @@ jobs:
           if-no-files-found: error
 
       - name: Run Examples
-        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure --no-tests=error
 
       - name: Run Tests
-        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure --no-tests=error
 
       - name: sccache stats
         shell: bash
         run: ${SCCACHE_PATH} --show-stats
-#      - name: Compile-only umbrella header POSIX
-#        if: runner.os != 'Windows'
-#        shell: bash
-#        run: |
-#          set -euo pipefail
-#          CXX=$(grep -E '^CMAKE_CXX_COMPILER:FILEPATH=' build/ci-header/CMakeCache.txt | cut -d= -f2-)
-#          cat > header_only.cpp <<'CPP'
-#          #include "byteweave/byteweave.hpp"
-#          int main() { return 0; }
-#          CPP
-#          "$CXX" -std=c++20 -DBYTEWEAVE_HEADER_ONLY=1 -Ibuild/ci-header/generated -Iinclude -c header_only.cpp -o /dev/null
-#
-#      - name: Compile-only umbrella header Windows
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          Set-StrictMode -Version Latest
-#          $code = @'
-#          #include "byteweave/byteweave.hpp"
-#          int main(){ return 0; }
-#          '@
-#          Set-Content -Path header_only.cpp -Value $code -Encoding UTF8
-#          cl /nologo /EHsc /std:c++20 /DBYTEWEAVE_HEADER_ONLY=1 /I build\ci-header\generated /I include /c header_only.cpp
-#
-#      - name: Check single header self-containment POSIX
-#        if: runner.os != 'Windows'
-#        shell: bash
-#        run: |
-#          set -euo pipefail
-#          HEADER=$(ls build/ci-header/byteweave-*.single.hpp | head -n 1)
-#          echo "Header: $HEADER"
-#          if grep -nE '#\s*include\s*["<]byteweave/' "$HEADER"; then
-#            echo "::error::Single header should not include byteweave/* headers"; exit 1
-#          fi
-#
-#      - name: Check single header self-containment Windows
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          $header = (Get-ChildItem "build/ci-header" -Filter "byteweave-*.single.hpp" | Select-Object -First 1).FullName
-#          Write-Host "Header: $header"
-#          $hit = Select-String -Path $header -Pattern '#\s*include\s*["<]byteweave/'
-#          if ($hit) { throw "Single header should not include byteweave/* headers" }
-#
-#      - name: Lint single header POSIX
-#        if: runner.os != 'Windows'
-#        shell: bash
-#        run: |
-#          set -euo pipefail
-#          HEADER=$(ls build/ci-header/byteweave-*.single.hpp | head -n 1)
-#          echo "Header: $HEADER"
-#
-#          echo "Includes present in single header (for info):"
-#          grep -nE '^[[:space:]]*#\s*include\s*[<"].+[>"]' "$HEADER" || true
-#
-#          if grep -nE '^[[:space:]]*#\s*include\s*"' "$HEADER"; then
-#            echo "::error::Single header must not contain local quote includes"; exit 1
-#          fi
-#
-#          PO=$(grep -nE '^[[:space:]]*#\s*pragma\s+once' "$HEADER" | wc -l | tr -d ' ')
-#          if [ "$PO" != "1" ]; then
-#            echo "::error::Expected exactly one '#pragma once' but found $PO"; exit 1
-#          fi
-#
-#          macros=(
-#            BW_API
-#            BYTEWEAVE_AMALGAMATED
-#            BYTEWEAVE_HEADER_ONLY
-#            BYTEWEAVE_URLSAFE_DEFAULT
-#            BYTEWEAVE_STRICT_DECODING
-#            BYTEWEAVE_VERSION_MAJOR
-#            BYTEWEAVE_VERSION_MINOR
-#            BYTEWEAVE_VERSION_PATCH
-#            BYTEWEAVE_VERSION_STRING
-#          )
-#
-#          for M in "${macros[@]}"; do
-#            C=$(grep -nE "^[[:space:]]*#\s*define\s+$M\b" "$HEADER" | wc -l | tr -d ' ')
-#            if [ "$C" -gt 1 ]; then
-#              echo "::error::Macro '$M' defined $C times in single header"; exit 1
-#            fi
-#          done
-#
-#          if ! grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' "$HEADER"; then
-#            echo "::warning::No ISO8601Z timestamp found in header banner"
-#          fi
-#
-#          if [ "$(head -c3 "$HEADER" | od -An -t x1 | tr -d ' ')" = "efbbbf" ]; then
-#            echo "::warning::Header has a UTF-8 BOM; consider removing"
-#          fi
-#          last_byte=$(tail -c1 "$HEADER" | od -An -t x1 | tr -d ' ')
-#          if [ -n "$last_byte" ] && [ "$last_byte" != "0a" ]; then
-#            echo "::warning::Header does not end with a newline"
-#          fi
-#
-#      - name: Lint single header Windows
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          $header = (Get-ChildItem "build/ci-header" -Filter "byteweave-*.single.hpp" | Select-Object -First 1).FullName
-#          Write-Host "Header: $header"
-#
-#          $incLocal = Select-String -Path $header -Pattern '^\s*#\s*include\s*"'
-#          if ($incLocal) { throw "Single header must not contain local quote includes" }
-#
-#          $po = (Select-String -Path $header -Pattern '^\s*#\s*pragma\s+once').Count
-#          if ($po -ne 1) { throw "Expected exactly one '#pragma once' but found $po" }
-#
-#          $macros = @(
-#            'BW_API',
-#            'BYTEWEAVE_AMALGAMATED',
-#            'BYTEWEAVE_HEADER_ONLY',
-#            'BYTEWEAVE_URLSAFE_DEFAULT',
-#            'BYTEWEAVE_STRICT_DECODING',
-#            'BYTEWEAVE_VERSION_MAJOR',
-#            'BYTEWEAVE_VERSION_MINOR',
-#            'BYTEWEAVE_VERSION_PATCH',
-#            'BYTEWEAVE_VERSION_STRING'
-#          )
-#
-#          foreach ($m in $macros) {
-#            $count = (Select-String -Path $header -Pattern ("^\s*#\s*define\s+" + [regex]::Escape($m) + "\b")).Count
-#            if ($count -gt 1) { throw "Macro '$m' defined $count times in single header" }
-#          }
-#
-#          $ts = Select-String -Path $header -Pattern '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
-#          if (-not $ts) { Write-Warning "No ISO8601Z timestamp found in header banner" }
-#
-#          $bytes = [System.IO.File]::ReadAllBytes($header)
-#          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-#            Write-Warning "Header has a UTF-8 BOM; consider removing"
-#          }
-#          if ($bytes.Length -gt 0 -and $bytes[$bytes.Length-1] -ne 10) {
-#            Write-Warning "Header does not end with a newline"
-#          }
-#
-#      - name: ODR probe POSIX
-#        if: runner.os != 'Windows'
-#        shell: bash
-#        run: |
-#          set -euo pipefail
-#          CXX=$(grep -E '^CMAKE_CXX_COMPILER:FILEPATH=' build/ci-header/CMakeCache.txt | cut -d= -f2-)
-#          HEADER=$(ls build/ci-header/byteweave-*.single.hpp | head -n 1)
-#          echo "#include \"$HEADER\"" > odr_a.cpp
-#          echo "#include \"$HEADER\"" > odr_b.cpp
-#          echo "int main(){return 0;}" >> odr_a.cpp
-#          echo "int f(){return 42;}" >> odr_b.cpp
-#          "$CXX" -std=c++20 odr_a.cpp odr_b.cpp -o odr_test
-#          ./odr_test
-#
-#      - name: ODR probe Windows
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          $cxx = (Select-String -Path "build/ci-header/CMakeCache.txt" -Pattern '^CMAKE_CXX_COMPILER:FILEPATH=' | Select-Object -First 1).Line -replace '.*=',''
-#          $header = (Get-ChildItem "build/ci-header" -Filter "byteweave-*.single.hpp" | Select-Object -First 1).FullName
-#          Set-Content -Path odr_a.cpp -Value "#include `"$header`"`nint main(){return 0;}"
-#          Set-Content -Path odr_b.cpp -Value "#include `"$header`"`nint f(){return 42;}"
-#          & "$cxx" /std:c++20 /EHsc odr_a.cpp odr_b.cpp /Fe:odr_test.exe
-#          & .\odr_test.exe
+
+      - name: Check single header self-containment (portable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEADER="$(ls "${{ env.BUILD_DIR }}"/byteweave-*.single.hpp | head -n 1)"
+          echo "Header: $HEADER"
+          python3 - "$HEADER" <<'PY'
+          import re, sys, pathlib
+          hdr = pathlib.Path(sys.argv[1])
+          txt = hdr.read_text(encoding="utf-8", errors="ignore")
+          ok = True
+          # 1) no local quote includes inside the single header
+          if re.search(r'^\s*#\s*include\s*"', txt, re.M):
+              print("::error:: Single header must not contain local quote includes")
+              ok = False
+          # 2) no includes of byteweave/* inside the single header
+          if re.search(r'#\s*include\s*["<]byteweave/', txt):
+              print("::error:: Single header must not include byteweave/* headers")
+              ok = False
+          # 3) exactly one pragma once
+          if len(re.findall(r'^\s*#\s*pragma\s+once', txt, re.M)) != 1:
+              print("::error:: Expected exactly one '#pragma once'")
+              ok = False
+          # 4) macro uniqueness
+          macros = [
+            "BW_API","BYTEWEAVE_AMALGAMATED","BYTEWEAVE_HEADER_ONLY",
+            "BYTEWEAVE_URLSAFE_DEFAULT","BYTEWEAVE_STRICT_DECODING",
+            "BYTEWEAVE_VERSION_MAJOR","BYTEWEAVE_VERSION_MINOR",
+            "BYTEWEAVE_VERSION_PATCH","BYTEWEAVE_VERSION_STRING"
+          ]
+          for m in macros:
+              if len(re.findall(rf'^\s*#\s*define\s+{m}\b', txt, re.M)) > 1:
+                  print(f"::error:: Macro '{m}' defined more than once")
+                  ok = False
+          # 5) friendly warnings
+          if not re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', txt):
+              print("::warning:: No ISO8601Z timestamp found in header banner")
+          b = hdr.read_bytes()
+          if len(b) >= 3 and b[:3] == b'\xef\xbb\xbf':
+              print("::warning:: Header has a UTF-8 BOM")
+          if b and b[-1] != 0x0A:
+              print("::warning:: Header does not end with a newline")
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: ODR probe (single header, portable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HDR="$(ls "${{ env.BUILD_DIR }}"/byteweave-*.single.hpp | head -n 1)"
+          echo "Using header: $HDR"
+          mkdir -p odr-probe
+          cat > odr-probe/CMakeLists.txt <<'CM'
+          cmake_minimum_required(VERSION 3.20)
+          project(odr_probe CXX)
+          add_executable(odr_test a.cpp b.cpp)
+          target_compile_features(odr_test PRIVATE cxx_std_20)
+          CM
+          printf '#include "%s"\nint main(){return 0;}\n' "$HDR" > odr-probe/a.cpp
+          printf '#include "%s"\nint f(){return 42;}\n' "$HDR" > odr-probe/b.cpp
+          cmake -S odr-probe -B odr-probe/build -G Ninja
+          cmake --build odr-probe/build --target odr_test
