@@ -26,21 +26,26 @@ concurrency:
 jobs:
   build-lib:
     # TODO[@zmeadows][P3]: add cfg.san to job name?
-    name: build-lib (${{ matrix.cfg.os }}, ${{ matrix.cfg.compiler }}, shared=${{ matrix.shared }})
+    name: build-lib (${{ matrix.cfg.os }}, ${{ matrix.cfg.compiler }}, shared=${{ matrix.cfg.shared }})
     runs-on: ${{ matrix.cfg.os }}
     strategy:
       fail-fast: false
       matrix:
         cfg:
-          - { os: ubuntu-latest, compiler: gcc, cc: gcc, cxx: g++, san: false }
-          - { os: ubuntu-latest, compiler: clang, cc: clang, cxx: clang++, san: true }
-          - { os: macos-latest, compiler: clang, cc: clang, cxx: clang++, san: false }
-          - { os: windows-latest, compiler: msvc, san: false }
-        shared: [true, false]
+          # prettier-ignore
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: true,  werror: false }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, shared: false, werror: false }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: true,  werror: false }
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  shared: false, werror: true  }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: true,  werror: false }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, shared: false, werror: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: true,  werror: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, shared: false, werror: true  }
+          # prettier-ignore-end
 
     env:
-      BUILD_PRESET: ${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }}
-      BUILD_DIR: build/${{ matrix.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+      BUILD_PRESET: ${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
+      BUILD_DIR: build/${{ matrix.cfg.shared && 'ci-lib-shared' || 'ci-lib-static' }}
 
     steps:
       - name: Show Matrix
@@ -72,10 +77,13 @@ jobs:
           echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
 
       - name: CMake Configure
-        run: cmake --preset ${{ env.BUILD_PRESET }} ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
+        run: >
+          cmake --preset ${{ env.BUILD_PRESET }}
+          ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
+          ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
 
       - name: CMake Build
-        run: cmake --build --preset ${{ env.BUILD_PRESET }} --parallel
+        run: cmake --build --preset ${{ env.BUILD_PRESET }}
 
       - name: Run Examples
         run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure
