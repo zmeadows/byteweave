@@ -107,16 +107,6 @@
     },
 
     {
-      "name": "ci-sanitizers",
-      "inherits": ["ci-lib"],
-      "binaryDir": "build/ci-sanitizers",
-      "cacheVariables": {
-        "BYTEWEAVE_BUILD_SHARED": false,
-        "BYTEWEAVE_ENABLE_SANITIZERS": true
-      }
-    },
-
-    {
       "name": "ci-tidy",
       "inherits": ["ci-base"],
       "binaryDir": "build/ci-tidy",
@@ -149,7 +139,6 @@
     { "name": "ci-lib-static", "configurePreset": "ci-lib-static" },
     { "name": "ci-lib-shared", "configurePreset": "ci-lib-shared" },
     { "name": "ci-header", "configurePreset": "ci-header" },
-    { "name": "ci-sanitizers", "configurePreset": "ci-sanitizers" },
     { "name": "ci-tidy", "configurePreset": "ci-tidy" },
     { "name": "ci-package", "configurePreset": "ci-package" }
   ]

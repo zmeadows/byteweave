@@ -25,8 +25,7 @@ concurrency:
 
 jobs:
   lib:
-    # TODO[@zmeadows][P3]: add cfg.san to job name?
-    name: "lib: ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}"
+    name: "lib ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}"
     runs-on: ${{ matrix.cfg.os }}
     strategy:
       fail-fast: false
@@ -95,71 +94,79 @@ jobs:
       - name: sccache stats
         shell: bash
         run: ${SCCACHE_PATH} --show-stats
-#  build-header:
-#    name: build-header (${{ matrix.os }}, ${{ matrix.compiler }})
-#    runs-on: ${{ matrix.os }}
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        os: [ubuntu-24.04, macos-15, windows-2025]
-#        compiler: [gcc, clang, msvc]
-#        exclude:
-#          - os: ubuntu-24.04
-#            compiler: msvc
-#          - os: macos-15
-#            compiler: msvc
-#          - os: macos-15
-#            compiler: gcc
-#          - os: windows-2025
-#            compiler: gcc
-#          - os: windows-2025
-#            compiler: clang
-#
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#
-#      - name: Setup Ninja
-#        uses: ./.github/actions/setup-ninja
-#        with:
-#          version: ${{ env.NINJA_VERSION }}
-#
-#      - name: Setup Python (if needed)
-#        id: setup_python
-#        uses: ./.github/actions/setup-python-if-needed
-#        with:
-#          min_version: "3.10"
-#          setup_version: "3.11"
-#
-#      - name: Setup CMake (if needed)
-#        id: setup_cmake
-#        uses: ./.github/actions/setup-cmake-if-needed
-#        with:
-#          min_version: "3.20.0"
-#          cmake_version: "3.29.*"
-#          python_bin: ${{ steps.setup_python.outputs.python_bin }}
-#
-#      - name: Restore sccache object cache
-#        uses: actions/cache@v4
-#        with:
-#          path: ${{ env.SCCACHE_DIR }}
-#          key: ${{ runner.os }}-header-${{ matrix.compiler }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'include/**', 'src/**', 'tools/amalgamate.py') }}
-#          restore-keys: |
-#            ${{ runner.os }}-header-${{ matrix.compiler }}-
-#
-#      - name: Setup sccache
-#        uses: ./.github/actions/setup-sccache
-#        with:
-#          version: ${{ env.SCCACHE_VERSION }}
-#
-#      - name: Setup MSVC env Windows
-#        if: runner.os == 'Windows'
-#        uses: ilammy/msvc-dev-cmd@v1
-#
-#      - name: Configure preset ci-header
-#        shell: bash
-#        run: cmake --preset ci-header
-#
+
+  single-header:
+    name: "single-header ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }}⟩${{ matrix.cfg.san && ' · san' || '' }}"
+    runs-on: ${{ matrix.cfg.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          # prettier-ignore
+          - { os: ubuntu-latest,  compiler: clang, cc: clang, cxx: clang++, san: true,  wrerror: true  }
+          - { os: ubuntu-latest,  compiler: gcc,   cc: gcc,   cxx: g++,     san: false, wrerror: false }
+          - { os: macos-latest,   compiler: clang, cc: clang, cxx: clang++, san: false, wrerror: false }
+          - { os: windows-latest, compiler: msvc,                           san: false, wrerror: false }
+          # prettier-ignore-end
+
+    env:
+      BUILD_PRESET: ci-header
+      BUILD_DIR: build/ci-header
+
+    steps:
+      - name: Show Matrix
+        run: echo '${{ toJson(matrix) }}'
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set Up Build Environment
+        uses: ./.github/actions/setup-build
+
+      - name: Export CC/CXX (POSIX)
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          echo "CC=${{ matrix.cfg.cc }}"  >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.cfg.cxx }}" >> "$GITHUB_ENV"
+
+      - name: Configure ASAN/UBSAN Environment
+        if: ${{ matrix.cfg.san }}
+        shell: bash
+        run: |
+          sym=$(command -v llvm-symbolizer || true)
+          if [ -n "$sym" ]; then
+            echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
+          fi
+
+          echo 'ASAN_OPTIONS=detect_leaks=1:strict_init_order=1:check_initialization_order=1:abort_on_error=1:detect_stack_use_after_return=1' >> "$GITHUB_ENV"
+          echo 'UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1' >> "$GITHUB_ENV"
+
+      - name: CMake Configure
+        run: >
+          cmake --preset ${{ env.BUILD_PRESET }}
+          ${{ matrix.cfg.san && '-DBYTEWEAVE_ENABLE_SANITIZERS=ON' || '' }}
+          ${{ matrix.cfg.werror && '-DBYTEWEAVE_WERROR=ON -DBYTEWEAVE_WARNINGS_STRICT=ON' || '' }}
+
+      - name: CMake Build
+        run: cmake --build --preset ${{ env.BUILD_PRESET }}
+
+      - name: Upload Single Header Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: byteweave-single-header-${{ matrix.cfg.os }}-${{ matrix.cfg.compiler }}
+          path: build/ci-header/byteweave-*.single.hpp
+          if-no-files-found: error
+
+      - name: Run Examples
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -L examples --output-on-failure
+
+      - name: Run Tests
+        run: ctest --test-dir ${{ env.BUILD_DIR }} -LE examples --output-on-failure
+
+      - name: sccache stats
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
 #      - name: Compile-only umbrella header POSIX
 #        if: runner.os != 'Windows'
 #        shell: bash
@@ -183,18 +190,6 @@ jobs:
 #          '@
 #          Set-Content -Path header_only.cpp -Value $code -Encoding UTF8
 #          cl /nologo /EHsc /std:c++20 /DBYTEWEAVE_HEADER_ONLY=1 /I build\ci-header\generated /I include /c header_only.cpp
-#
-#      - name: Build single header
-#        shell: bash
-#        run: |
-#          cmake --build --preset ci-header --parallel
-#
-#      - name: Upload single header artifact early
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: byteweave-single-header-${{ matrix.os }}-${{ matrix.compiler }}
-#          path: build/ci-header/byteweave-*.single.hpp
-#          if-no-files-found: error
 #
 #      - name: Check single header self-containment POSIX
 #        if: runner.os != 'Windows'
@@ -332,37 +327,3 @@ jobs:
 #          Set-Content -Path odr_b.cpp -Value "#include `"$header`"`nint f(){return 42;}"
 #          & "$cxx" /std:c++20 /EHsc odr_a.cpp odr_b.cpp /Fe:odr_test.exe
 #          & .\odr_test.exe
-#
-#      - name: Build example_single
-#        shell: bash
-#        run: |
-#          cmake --build --preset ci-header --parallel
-#
-#      - name: Run example_single Linux and macOS
-#        if: runner.os != 'Windows'
-#        shell: bash
-#        run: |
-#          set -euo pipefail
-#          exe="build/ci-header/example_single"
-#          if [ ! -f "$exe" ]; then
-#            echo "example_single not found at $exe" >&2
-#            exit 1
-#          fi
-#          "$exe"
-#
-#      - name: Run example_single Windows
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          $exe = "build/ci-header/example_single.exe"
-#          $alt = "build/ci-header/Release/example_single.exe"
-#          if (!(Test-Path $exe) -and (Test-Path $alt)) { $exe = $alt }
-#          if (!(Test-Path $exe)) {
-#            Write-Error "example_single not found at $exe"
-#          }
-#          $env:PATH = "build/ci-header;$env:PATH"
-#          & $exe
-#
-#      - name: sccache stats (final)
-#        if: always()
-#        uses: ./.github/actions/sccache-stats
