@@ -8,6 +8,8 @@ project(
   LANGUAGES CXX
   VERSION 0.1.0)
 
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -126,22 +128,21 @@ if(BYTEWEAVE_ENABLE_SANITIZERS)
     # Make an interface that carries sanitizer flags. Consumers can opt-in by linking it.
     add_library(byteweave_san INTERFACE)
 
-    target_compile_options(byteweave_san INTERFACE
+    target_compile_options(
+      byteweave_san INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer
+                              -fno-sanitize-recover=undefined)
+    target_link_options(
+      byteweave_san
+      INTERFACE
       -fsanitize=address,undefined
       -fno-omit-frame-pointer
-      -fno-sanitize-recover=undefined
-    )
-    target_link_options(byteweave_san INTERFACE
-      -fsanitize=address,undefined
-      -fno-omit-frame-pointer
-      -fno-sanitize-recover=undefined
-    )
+      -fno-sanitize-recover=undefined)
 
     include(CheckCXXCompilerFlag)
     check_cxx_compiler_flag("-fsanitize=leak" BW_HAS_LSAN)
     if(BW_HAS_LSAN)
       target_compile_options(byteweave_san INTERFACE -fsanitize=leak)
-      target_link_options(byteweave_san INTERFACE    -fsanitize=leak)
+      target_link_options(byteweave_san INTERFACE -fsanitize=leak)
     endif()
 
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -151,11 +152,13 @@ if(BYTEWEAVE_ENABLE_SANITIZERS)
     # If we are in header-only mode (no library to propagate flags), apply sanitizer flags
     # at directory scope so tests/examples created in subdirs get them automatically.
     if(NOT BYTEWEAVE_BUILD_LIBRARY)
-      add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
-      add_link_options(   -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+      add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                          -fno-sanitize-recover=undefined)
+      add_link_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                       -fno-sanitize-recover=undefined)
       if(BW_HAS_LSAN)
         add_compile_options(-fsanitize=leak)
-        add_link_options(   -fsanitize=leak)
+        add_link_options(-fsanitize=leak)
       endif()
       if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_definitions(-D_GLIBCXX_ASSERTIONS=1)
