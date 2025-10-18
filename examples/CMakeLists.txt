@@ -66,14 +66,17 @@ foreach(rel_main IN LISTS _EXAMPLE_MAINS)
 
   # Register as a CTest test with label "examples", run from the example's folder
   add_test(NAME ${tgt} COMMAND $<TARGET_FILE:${tgt}>)
-  set_tests_properties(
-    ${tgt}
-    PROPERTIES
-      LABELS
-      "examples"
-      WORKING_DIRECTORY
-      "${CMAKE_CURRENT_SOURCE_DIR}/${rel_dir}"
-      # Augment PATH only on Windows (CMake >= 3.16 supports genex in test props)
-      ENVIRONMENT
-      "$<$<PLATFORM_ID:Windows>:PATH=$<SHELL_PATH:$<TARGET_FILE_DIR:byteweave>>;$ENV{PATH}>")
+
+  # Always set label + working dir
+  set_tests_properties(${tgt} PROPERTIES LABELS "examples" WORKING_DIRECTORY
+                                         "${CMAKE_CURRENT_SOURCE_DIR}/${rel_dir}")
+
+  # On Windows shared builds, if the byteweave DLL target exists, prepend its dir to PATH.
+  # (Header-only builds have no 'byteweave' target, so skip this to avoid genex errors.)
+  if(WIN32
+     AND BYTEWEAVE_BUILD_SHARED
+     AND TARGET byteweave)
+    set_tests_properties(
+      ${tgt} PROPERTIES ENVIRONMENT "PATH=$<SHELL_PATH:$<TARGET_FILE_DIR:byteweave>>;$ENV{PATH}")
+  endif()
 endforeach()
