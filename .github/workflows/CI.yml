@@ -1,5 +1,5 @@
 ---
-name: build
+name: CI
 
 on:
   workflow_dispatch:
@@ -24,9 +24,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-lib:
+  lib:
     # TODO[@zmeadows][P3]: add cfg.san to job name?
-    name: build-lib (${{ matrix.cfg.os }}, ${{ matrix.cfg.compiler }}, shared=${{ matrix.cfg.shared }})
+    name: "lib: ⟨${{ matrix.cfg.os }} · ${{ matrix.cfg.compiler }} · ${{ matrix.cfg.shared && 'shared' || 'static' }}⟩${{ matrix.cfg.san && ' · san' || '' }}${{ matrix.cfg.werror && ' · werror' || '' }}${{ matrix.cfg.lto && ' · lto' || '' }}"
     runs-on: ${{ matrix.cfg.os }}
     strategy:
       fail-fast: false
