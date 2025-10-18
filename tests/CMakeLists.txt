@@ -1,16 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT BYTEWEAVE_BUILD_LIBRARY)
-  message(STATUS "Tests skipped: BYTEWEAVE_BUILD_LIBRARY=OFF")
-  return()
-endif()
-
 enable_testing()
 
 # Discover tests:
-# - Any folder under tests/ is a "group" (label), e.g., unit/, roundtrip/, conformance/, ...
-# - Each test lives in its own subfolder and has an entry file named main.cpp or test.cpp
-# - We don't hard-code group names; we just find entry files anywhere under tests/
 file(
   GLOB_RECURSE _TEST_MAINS
   RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -37,15 +29,13 @@ foreach(rel_main IN LISTS _TEST_MAINS)
   # First path segment is the CTest label (group), e.g., "unit", "roundtrip", "conformance"
   string(REGEX MATCH "^[^/]+" label "${rel_dir}")
   if(label STREQUAL "")
-    # Edge case: an entry file directly inside tests/ (not recommended). Put under "misc".
-    set(label "misc")
+    set(label "misc") # edge case: entry file directly inside tests/
   endif()
 
   # Path without the first segment for nicer names (e.g., "smoke" or "utf8/illegal")
   string(REGEX REPLACE "^[^/]+/" "" short "${rel_dir}")
   if(short STREQUAL "")
-    # Edge case: tests/<label>/main.cpp
-    set(short "${label}")
+    set(short "${label}") # edge case: tests/<label>/main.cpp
   endif()
 
   _bw_test_target_name(tgt "${label}-${short}")
@@ -62,12 +52,27 @@ foreach(rel_main IN LISTS _TEST_MAINS)
 
   add_executable(${tgt} ${TEST_SRCS})
   target_compile_features(${tgt} PRIVATE cxx_std_20)
-  target_link_libraries(${tgt} PRIVATE byteweave)
 
-  # --- Friendly runtime paths for shared builds ---
-  if(BYTEWEAVE_BUILD_SHARED)
+  # ── Link/include depending on whether the library target exists ──────────────
+  if(TARGET byteweave)
+    # Normal library build: link the library (and sanitizers will propagate via PUBLIC)
+    target_link_libraries(${tgt} PRIVATE byteweave)
+  else()
+    # Header-only build: compile directly against headers
+    target_compile_definitions(${tgt} PRIVATE BYTEWEAVE_HEADER_ONLY=1)
+    target_include_directories(
+      ${tgt} PRIVATE "${PROJECT_BINARY_DIR}/generated" # generated/version.hpp
+                     "${PROJECT_SOURCE_DIR}/include" # public headers
+    )
+    # If the sanitizer interface target exists, use it in header-only too
+    if(TARGET byteweave_san)
+      target_link_libraries(${tgt} PRIVATE byteweave_san)
+    endif()
+  endif()
+
+  # --- Friendly runtime paths for shared builds (only if we actually have the lib) ---
+  if(BYTEWEAVE_BUILD_SHARED AND TARGET byteweave)
     if(WIN32)
-      # Copy runtime DLLs next to the test exe (fixes STATUS_DLL_NOT_FOUND on MSVC)
       if(CMAKE_VERSION VERSION_LESS 3.21)
         add_custom_command(
           TARGET ${tgt}

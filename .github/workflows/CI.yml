@@ -213,20 +213,37 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
-      - name: ODR probe (single header, portable)
+      - name: ODR probe (single header, portable, no search in include)
         shell: bash
         run: |
           set -euo pipefail
-          HDR="$(ls "${{ env.BUILD_DIR }}"/byteweave-*.single.hpp | head -n 1)"
-          echo "Using header: $HDR"
           mkdir -p odr-probe
+          # Pick the generated header (versioned) from the build dir
+          HDR_SRC=("${{ env.BUILD_DIR }}"/byteweave-*.single.hpp)
+          if [ ${#HDR_SRC[@]} -eq 0 ]; then
+            echo "::error:: single header not found in ${{ env.BUILD_DIR }}" ; exit 1
+          fi
+          # Copy to a stable name next to the probe sources
+          cp -f "${HDR_SRC[0]}" odr-probe/byteweave.single.hpp
+          echo "Using header: odr-probe/byteweave.single.hpp"
+
+          # Minimal CMake project
           cat > odr-probe/CMakeLists.txt <<'CM'
           cmake_minimum_required(VERSION 3.20)
           project(odr_probe CXX)
           add_executable(odr_test a.cpp b.cpp)
           target_compile_features(odr_test PRIVATE cxx_std_20)
           CM
-          printf '#include "%s"\nint main(){return 0;}\n' "$HDR" > odr-probe/a.cpp
-          printf '#include "%s"\nint f(){return 42;}\n' "$HDR" > odr-probe/b.cpp
-          cmake -S odr-probe -B odr-probe/build -G Ninja
+
+          # Two TUs, both including the same single header (ODR link check)
+          cat > odr-probe/a.cpp <<'CPP'
+          #include "byteweave.single.hpp"
+          int main(){ return 0; }
+          CPP
+          cat > odr-probe/b.cpp <<'CPP'
+          #include "byteweave.single.hpp"
+          int f(){ return 42; }
+          CPP
+
+          cmake -S odr-probe -B odr-probe/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build odr-probe/build --target odr_test
