@@ -1,81 +1,84 @@
 ---
 name: lint (format + tidy)
 
+# TODO[@zmeadows][P3]: lint non-cpp code and config files?
+
 on:
-  pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
+    paths: &lint_paths
+      - "include/**"
+      - "src/**"
+      - "examples/**"
+      - "tests/**"
+      - ".github/workflows/lint.yml"
+  pull_request:
+    paths: *lint_paths
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   format:
     name: clang-format check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Ensure clang-format
-        shell: bash
+      - name: Set Up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "~3.12.0"
+
+      - name: Install clang-format (wheel)
+        id: cf
         run: |
-          set -e
-          CF_BIN=""
-          if command -v clang-format >/dev/null 2>&1; then
-            CF_BIN="$(command -v clang-format)"
-          elif command -v clang-format-18 >/dev/null 2>&1; then
-            CF_BIN="$(command -v clang-format-18)"
-          elif command -v clang-format-17 >/dev/null 2>&1; then
-            CF_BIN="$(command -v clang-format-17)"
-          elif command -v clang-format-16 >/dev/null 2>&1; then
-            CF_BIN="$(command -v clang-format-16)"
-          else
-            sudo apt-get update
-            sudo apt-get install -y clang-format
-            CF_BIN="$(command -v clang-format)"
+          set -euo pipefail
+          pipx install "clang-format==21.*"
+          CF="$(command -v clang-format || true)"
+          if [[ -z "$CF" ]]; then
+            CF="$(pipx environment --value PIPX_BIN_DIR)/clang-format"
           fi
-          echo "CLANG_FORMAT_BIN=$CF_BIN" >> "$GITHUB_ENV"
-          "$CF_BIN" --version
+          echo "path=$CF" >> "$GITHUB_OUTPUT"
+          "$CF" --version
 
-      - name: Check formatting
+      - name: Run clang-format
         run: |
-          python3 tools/format.py --check --clang-format "$CLANG_FORMAT_BIN"
+          python3 tools/format.py \
+          --clang-format "${{ steps.cf.outputs.path }}" \
+          --check
 
   tidy:
     name: clang-tidy (no build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Ensure clang-tidy
-        shell: bash
+      - name: Install clang-tidy (wheel)
+        id: ct
         run: |
-          set -e
-          CT_BIN=""
-          if command -v clang-tidy >/dev/null 2>&1; then
-            CT_BIN="$(command -v clang-tidy)"
-          elif command -v clang-tidy-18 >/dev/null 2>&1; then
-            CT_BIN="$(command -v clang-tidy-18)"
-          elif command -v clang-tidy-17 >/dev/null 2>&1; then
-            CT_BIN="$(command -v clang-tidy-17)"
-          elif command -v clang-tidy-16 >/dev/null 2>&1; then
-            CT_BIN="$(command -v clang-tidy-16)"
-          else
-            sudo apt-get update
-            sudo apt-get install -y clang clang-tidy
-            CT_BIN="$(command -v clang-tidy)"
+          set -euo pipefail
+          pipx install "clang-tidy==21.*"
+          CT="$(command -v clang-tidy || true)"
+          if [[ -z "$CT" ]]; then
+            CT="$(pipx environment --value PIPX_BIN_DIR)/clang-tidy"
           fi
-          echo "CLANG_TIDY_BIN=$CT_BIN" >> "$GITHUB_ENV"
-          "$CT_BIN" --version
+          echo "path=$CT" >> "$GITHUB_OUTPUT"
+          "$CT" --version
 
-      - name: Configure only (produce compile_commands.json)
-        run: |
-          cmake -S . -B build/ci-tidy -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DBYTEWEAVE_BUILD_LIBRARY=ON \
-            -DBYTEWEAVE_BUILD_SINGLE_HEADER=OFF \
-            -DBYTEWEAVE_BUILD_EXAMPLES=ON
+      - name: CMake Configure (for compile_commands.json)
+        run: cmake --preset ci-tidy
 
       - name: Run clang-tidy
-        env:
-          CLANG_TIDY: ${{ env.CLANG_TIDY_BIN }}
         run: |
-          python3 tools/tidy.py --p build/ci-tidy --warnings-as-errors --jobs 4
+          python3 tools/tidy.py \
+            --clang-tidy "${{ steps.ct.outputs.path }}" \
+            --p build/ci-tidy \
+            --warnings-as-errors \
+            --jobs $(nproc)

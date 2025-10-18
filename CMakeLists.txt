@@ -12,16 +12,31 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(MSVC AND CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+  # Hard-kill any /Zi or /ZI someone added (toolchain, env, presets, etc.)
+  foreach(lang C CXX)
+    foreach(cfg DEBUG RELWITHDEBINFO)
+      string(REGEX REPLACE "([/ ]Z[Ii])" "" CMAKE_${lang}_FLAGS_${cfg}
+                           "${CMAKE_${lang}_FLAGS_${cfg}}")
+      set(CMAKE_${lang}_FLAGS_${cfg} "${CMAKE_${lang}_FLAGS_${cfg}} /Z7")
+    endforeach()
+  endforeach()
+endif()
+
 # =============================================================================
 # Options (kept minimal)
 # =============================================================================
+option(BYTEWEAVE_BUILD_EXAMPLES "Build example programs (whichever artifacts exist)" OFF)
 option(BYTEWEAVE_BUILD_LIBRARY "Build the byteweave library target" ON)
 option(BYTEWEAVE_BUILD_SHARED "If building the library, build it as SHARED instead of STATIC" OFF)
 option(BYTEWEAVE_BUILD_SINGLE_HEADER "Generate the amalgamated single-header target" ON)
-option(BYTEWEAVE_BUILD_EXAMPLES "Build example programs (whichever artifacts exist)" OFF)
+option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" OFF)
+option(BYTEWEAVE_COPY_COMPILE_COMMANDS "Copy compile_commands.json to project root" OFF)
+option(BYTEWEAVE_ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
+option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in build dir" ON)
 option(BYTEWEAVE_WARNINGS "Enable common warning flags" ON)
-option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
 option(BYTEWEAVE_WARNINGS_STRICT "Enable extra-strict warnings (conversion, shadow, etc.)" OFF)
+option(BYTEWEAVE_WERROR "Treat warnings as errors" OFF)
 
 # If the user disables both library and single-header, there will be nothing to build.
 # We allow it (configure-only) but print a friendly warning.
@@ -68,9 +83,6 @@ endif()
 # =============================================================================
 # Compile Commands toggles
 # =============================================================================
-option(BYTEWEAVE_EXPORT_COMPILE_COMMANDS "Generate compile_commands.json in build dir" ON)
-option(BYTEWEAVE_COPY_COMPILE_COMMANDS "Copy compile_commands.json to project root" OFF)
-
 if(BYTEWEAVE_EXPORT_COMPILE_COMMANDS)
   set(CMAKE_EXPORT_COMPILE_COMMANDS
       ON
@@ -161,6 +173,21 @@ if(BYTEWEAVE_BUILD_LIBRARY)
     endif()
   endif()
 
+  if(BYTEWEAVE_ENABLE_SANITIZERS)
+    if(MSVC)
+      message(WARNING "BYTEWEAVE_ENABLE_SANITIZERS doesn't support MSVC currently.")
+    else()
+      target_compile_options(byteweave PRIVATE -fsanitize=address,undefined
+                                               -fno-omit-frame-pointer-fno-sanitize-recover=all)
+      target_link_options(
+        byteweave
+        PRIVATE
+        -fsanitize=address,undefined
+        -fno-omit-frame-pointer
+        -fno-sanitize-recover=all)
+    endif()
+  endif()
+
   if(BYTEWEAVE_BUILD_SHARED)
     # Ensure correct dllexport when building the DLL on Windows.
     target_compile_definitions(byteweave PRIVATE BW_BUILDING_DLL=1)
@@ -222,6 +249,14 @@ if(BYTEWEAVE_BUILD_EXAMPLES)
     add_executable(example_lib examples/minimal.cpp)
     target_link_libraries(example_lib PRIVATE byteweave)
     set(_examples_built TRUE)
+
+    if(BYTEWEAVE_BUILD_SHARED)
+      set_target_properties(
+        example_lib
+        PROPERTIES SKIP_BUILD_RPATH OFF
+                   BUILD_RPATH_USE_ORIGIN ON
+                   INSTALL_RPATH_USE_LINK_PATH ON)
+    endif()
   endif()
 
   if(TARGET single_header)
@@ -244,7 +279,6 @@ endif()
 # =============================================================================
 # Tests (optional)
 # =============================================================================
-option(BYTEWEAVE_BUILD_TESTS "Build and run minimal tests via CTest" OFF)
 if(BYTEWEAVE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

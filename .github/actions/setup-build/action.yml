@@ -1,0 +1,89 @@
+---
+name: setup-build
+description: "Set up reproducible pinned requirements for configuring/building byteweave."
+
+inputs:
+  python-version:
+    description: "python version"
+    required: false
+    default: "~3.12.0"
+  cmake-version:
+    description: "cmake version"
+    required: false
+    default: "^3.28"
+  ninja-version:
+    description: "ninja version"
+    required: false
+    default: "^1.12"
+  sccache-version:
+    description: "sccache version"
+    required: false
+    default: "v0.10.0"
+  use-sccache:
+    description: "enable/disable sccache"
+    default: "true"
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: Set Up MSVC (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Set Up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Set Up CMake
+      uses: lukka/get-cmake@latest
+      with:
+        cmakeVersion: ${{ inputs.cmake-version }}
+        ninjaVersion: ${{ inputs.ninja-version }}
+
+    - name: Specify CMake/CTest Thread Count
+      shell: bash
+      run: |
+        case "$RUNNER_OS" in
+          Linux)  N=$(nproc) ;;
+          macOS)  N=$(sysctl -n hw.ncpu) ;;
+          Windows) N=$NUMBER_OF_PROCESSORS ;;
+        esac
+        echo "CMAKE_BUILD_PARALLEL_LEVEL=$N" >> "$GITHUB_ENV"
+        echo "CTEST_PARALLEL_LEVEL=$N" >> "$GITHUB_ENV"
+
+    - name: Set Up sccache
+      if: ${{ fromJSON(inputs.use-sccache) }}
+      uses: Mozilla-Actions/sccache-action@v0.0.9
+      with:
+        version: ${{ inputs.sccache-version }}
+
+    - name: Configure sccache
+      if: ${{ fromJSON(inputs.use-sccache) }}
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
+        # Optional debug knobs:
+        # echo "SCCACHE_LOG=info" >> "$GITHUB_ENV"
+        # echo "SCCACHE_ERROR_LOG=$RUNNER_TEMP/sccache.log" >> "$GITHUB_ENV"
+
+    - name: Show Tool Versions
+      shell: bash
+      run: |
+        set +e
+
+        python --version || true
+        cmake  --version || true
+        ninja  --version || true
+
+        # sccache: prefer the path provided by the Mozilla action, else try PATH
+        if [[ -n "${SCCACHE_PATH:-}" ]]; then
+          "$SCCACHE_PATH" --version || true
+        elif command -v sccache >/dev/null 2>&1; then
+          sccache --version || true
+        else
+          echo "sccache not found"
+        fi
